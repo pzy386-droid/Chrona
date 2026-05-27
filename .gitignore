@@ -1,0 +1,51 @@
+# Build outputs
+build/
+build-*/
+out/
+cmake-build-*/
+
+# CMake generated files
+CMakeCache.txt
+CMakeFiles/
+cmake_install.cmake
+compile_commands.json
+CTestTestfile.cmake
+Testing/
+install_manifest.txt
+
+# Qt / IDE local files
+*.user
+*.user.*
+*.autosave
+.qmake.stash
+.vscode/
+.vs/
+
+# Generated binaries and deployment artifacts
+*.exe
+*.dll
+*.pdb
+*.ilk
+*.obj
+*.o
+*.a
+*.lib
+*.so
+*.dylib
+*.app/
+
+# Runtime data
+*.sqlite
+*.sqlite3
+*.db
+
+# Local machine workarounds
+tools/gxx-tmp.cmd
+
+# Generated translations
+src/i18n/*.qm
+
+# OS noise
+.DS_Store
+Thumbs.db
+desktop.ini

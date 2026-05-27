@@ -1,0 +1,26 @@
+{
+  "version": 6,
+  "configurePresets": [
+    {
+      "name": "qt-mingw-debug",
+      "displayName": "Qt 6.6.3 MinGW Debug",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/qt-mingw-debug",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "Debug",
+        "CMAKE_PREFIX_PATH": "C:/Qt/6.6.3/mingw_64"
+      },
+      "environment": {
+        "PATH": "D:/msys2/mingw64/bin;C:/Qt/6.6.3/mingw_64/bin;$penv{PATH}",
+        "TMP": "${sourceDir}/build/tmp",
+        "TEMP": "${sourceDir}/build/tmp"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "qt-mingw-debug",
+      "configurePreset": "qt-mingw-debug"
+    }
+  ]
+}
