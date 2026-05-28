@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent LinguistTools)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.6)
 
@@ -52,6 +52,7 @@ qt_add_executable(Chrona
     src/ai/AIService.h
     src/ai/NoopAIService.cpp
     src/ai/NoopAIService.h
+    src/ai/providers/DeepSeekProvider.cpp
     src/ai/providers/DeepSeekProvider.h
 )
 
@@ -71,6 +72,7 @@ qt_add_qml_module(Chrona
         src/ui/qml/components/QuickAddBar.qml
         src/ui/qml/components/SegmentedControl.qml
         src/ui/qml/components/TimeBlock.qml
+        src/ui/qml/components/TimeWheelPicker.qml
         src/ui/qml/components/TimelineView.qml
 )
 
@@ -87,6 +89,7 @@ target_link_libraries(Chrona PRIVATE
     Qt6::Quick
     Qt6::Sql
     Qt6::Concurrent
+    Qt6::Network
 )
 
 if(WIN32)

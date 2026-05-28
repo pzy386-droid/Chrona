@@ -16,7 +16,9 @@ Rectangle {
         titleField.text = task.title || ""
         notesField.text = task.notes || ""
         deadlineField.text = task.deadlineText || ""
-        durationInput.value = Math.max(30, task.estimatedMinutes || 60)
+        startTimeField.text = task.blockStartText || "09:00"
+        endTimeField.text = task.blockEndText || "10:30"
+        dayPicker.currentIndex = Math.max(0, Math.min(6, task.blockDayIndex || 0))
         priorityPicker.currentIndex = Math.max(0, Math.min(2, task.priority || 0))
         categoryField.text = task.categoryName || ""
         var preferred = task.preferredStudyTime || "evening"
@@ -76,7 +78,6 @@ Rectangle {
             spacing: 12
 
             Item { Layout.fillHeight: true }
-
             Text {
                 Layout.fillWidth: true
                 text: qsTr("选择一个时间块")
@@ -85,17 +86,15 @@ Rectangle {
                 font.weight: Font.DemiBold
                 horizontalAlignment: Text.AlignHCenter
             }
-
             Text {
                 Layout.fillWidth: true
-                text: qsTr("点击时间轴中的学习块，可以在这里查看、编辑并重新排程。")
+                text: qsTr("点击时间轴中的学习块，可以在这里修改任务和当前时间块。")
                 color: "#8C96AA"
                 font.pixelSize: 13
                 lineHeight: 1.35
                 wrapMode: Text.WordWrap
                 horizontalAlignment: Text.AlignHCenter
             }
-
             Item { Layout.fillHeight: true }
         }
 
@@ -131,7 +130,7 @@ Rectangle {
                 TextArea {
                     id: notesField
                     Layout.fillWidth: true
-                    Layout.preferredHeight: 92
+                    Layout.preferredHeight: 88
                     color: "#E6EAF2"
                     selectedTextColor: "white"
                     selectionColor: "#5968D8"
@@ -155,19 +154,51 @@ Rectangle {
                     background: FieldBackground {}
                 }
 
+                FieldLabel { text: qsTr("当前时间块") }
+                OptionPills {
+                    id: dayPicker
+                    Layout.fillWidth: true
+                    options: [qsTr("今天"), qsTr("明天"), qsTr("后天"), qsTr("第4天"), qsTr("第5天"), qsTr("第6天"), qsTr("第7天")]
+                }
+
                 RowLayout {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    ColumnLayout {
+                    TextField {
+                        id: startTimeField
                         Layout.fillWidth: true
-                        spacing: 8
-                        FieldLabel { text: qsTr("预计时长") }
-                        MinuteStepper {
-                            id: durationInput
-                            Layout.fillWidth: true
-                        }
+                        visible: false
                     }
+
+                    TimeSelectButton {
+                        Layout.fillWidth: true
+                        value: startTimeField.text || "09:00"
+                        onClicked: startWheel.openWith(startTimeField.text)
+                    }
+
+                    Text {
+                        text: "-"
+                        color: "#667187"
+                        font.pixelSize: 16
+                    }
+
+                    TextField {
+                        id: endTimeField
+                        Layout.fillWidth: true
+                        visible: false
+                    }
+
+                    TimeSelectButton {
+                        Layout.fillWidth: true
+                        value: endTimeField.text || "10:30"
+                        onClicked: endWheel.openWith(endTimeField.text)
+                    }
+                }
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 10
 
                     ColumnLayout {
                         Layout.fillWidth: true
@@ -237,26 +268,38 @@ Rectangle {
         ActionButton {
             visible: root.hasTask
             Layout.fillWidth: true
-            text: qsTr("保存并重新排程")
+            text: qsTr("保存任务和时间块")
             onClicked: {
-                var result = ScheduleService.updateTask(
+                var moveResult = ScheduleService.moveSelectedTaskBlock(dayPicker.currentIndex, startTimeField.text, endTimeField.text)
+                var updateResult = ScheduleService.updateTask(
                     root.task.id,
                     titleField.text,
                     notesField.text,
                     deadlineField.text,
-                    durationInput.value,
+                    root.task.estimatedMinutes || 60,
                     priorityPicker.currentIndex,
                     categoryField.text,
                     root.preferredValues[preferredPicker.currentIndex]
                 )
-                statusText.color = result.ok ? "#A9F0C9" : "#FFB09B"
-                statusText.text = result.message || ""
+                var ok = updateResult.ok && moveResult.ok
+                statusText.color = ok ? "#A9F0C9" : "#FFB09B"
+                statusText.text = ok ? qsTr("已保存并移动时间块") : (moveResult.message || updateResult.message || qsTr("保存失败"))
             }
         }
     }
 
-    Behavior on width {
-        NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+    Behavior on width { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+
+    TimeWheelPicker {
+        id: startWheel
+        title: qsTr("选择起始时间")
+        onAccepted: function(value) { startTimeField.text = value }
+    }
+
+    TimeWheelPicker {
+        id: endWheel
+        title: qsTr("选择终止时间")
+        onAccepted: function(value) { endTimeField.text = value }
     }
 
     component FieldLabel: Text {
@@ -270,73 +313,6 @@ Rectangle {
         color: "#151A23"
         border.width: 1
         border.color: "#2C3548"
-    }
-
-    component MinuteStepper: Rectangle {
-        id: stepper
-        property int value: 60
-
-        Layout.preferredHeight: 42
-        radius: 8
-        color: "#151A23"
-        border.width: 1
-        border.color: "#2C3548"
-
-        RowLayout {
-            anchors.fill: parent
-            anchors.leftMargin: 12
-            anchors.rightMargin: 6
-            spacing: 8
-
-            Text {
-                Layout.fillWidth: true
-                text: qsTr("%1 分钟").arg(stepper.value)
-                color: "#E6EAF2"
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-                elide: Text.ElideRight
-            }
-
-            StepButton {
-                text: "-"
-                onClicked: stepper.value = Math.max(30, stepper.value - 15)
-            }
-
-            StepButton {
-                text: "+"
-                onClicked: stepper.value = Math.min(720, stepper.value + 15)
-            }
-        }
-    }
-
-    component StepButton: Rectangle {
-        id: step
-        property alias text: label.text
-        signal clicked()
-
-        Layout.preferredWidth: 28
-        Layout.preferredHeight: 28
-        radius: 7
-        color: mouse.containsMouse ? "#283147" : "#1B2130"
-        border.width: 1
-        border.color: "#343E55"
-
-        Behavior on color { ColorAnimation { duration: 120 } }
-
-        Text {
-            id: label
-            anchors.centerIn: parent
-            color: "#C5CBEA"
-            font.pixelSize: 16
-            font.weight: Font.DemiBold
-        }
-
-        MouseArea {
-            id: mouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: step.clicked()
-        }
     }
 
     component OptionPills: Rectangle {
@@ -357,7 +333,6 @@ Rectangle {
 
             Repeater {
                 model: pills.options
-
                 delegate: Rectangle {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
@@ -365,14 +340,13 @@ Rectangle {
                     color: pills.currentIndex === index ? "#252D44" : "transparent"
                     border.width: pills.currentIndex === index ? 1 : 0
                     border.color: "#7C8CFF"
-
                     Behavior on color { ColorAnimation { duration: 140 } }
 
                     Text {
                         anchors.centerIn: parent
                         text: modelData
                         color: pills.currentIndex === index ? "#E6EAF2" : "#8D98AB"
-                        font.pixelSize: 13
+                        font.pixelSize: 12
                         font.weight: Font.DemiBold
                     }
 
@@ -383,6 +357,51 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    component TimeSelectButton: Rectangle {
+        id: timeButton
+        property string value: "09:00"
+        signal clicked()
+
+        Layout.preferredHeight: 44
+        radius: 10
+        color: mouse.containsMouse ? "#1A2030" : "#151A23"
+        border.width: 1
+        border.color: mouse.containsMouse ? "#53607C" : "#2C3548"
+
+        Behavior on color { ColorAnimation { duration: 140 } }
+        Behavior on border.color { ColorAnimation { duration: 140 } }
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.leftMargin: 14
+            anchors.rightMargin: 12
+            spacing: 8
+
+            Text {
+                Layout.fillWidth: true
+                text: timeButton.value
+                color: "#E6EAF2"
+                font.pixelSize: 15
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                text: "⌄"
+                color: "#7C8CFF"
+                font.pixelSize: 16
+                font.weight: Font.DemiBold
+            }
+        }
+
+        MouseArea {
+            id: mouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: timeButton.clicked()
         }
     }
 
@@ -401,7 +420,6 @@ Rectangle {
             : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
         border.width: muted || danger ? 1 : 0
         border.color: danger ? "#FF7A59" : "#30384C"
-
         Behavior on color { ColorAnimation { duration: 140 } }
 
         Text {

@@ -2,6 +2,7 @@
 
 #include "app/LocaleService.h"
 #include "app/ScheduleService.h"
+#include "ai/AIService.h"
 #include "database/Database.h"
 
 #include <memory>
@@ -16,4 +17,5 @@ private:
     Database m_database;
     std::unique_ptr<LocaleService> m_localeService;
     std::unique_ptr<ScheduleService> m_scheduleService;
+    std::unique_ptr<AIService> m_aiService;
 };

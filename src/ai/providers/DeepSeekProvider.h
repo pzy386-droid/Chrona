@@ -6,20 +6,13 @@ class DeepSeekProvider final : public AIService {
     Q_OBJECT
 
 public:
-    explicit DeepSeekProvider(QObject* parent = nullptr)
-        : AIService(parent)
-    {
-    }
+    explicit DeepSeekProvider(QString apiKey, QObject* parent = nullptr);
 
-    QFuture<AIParseResult> parseNaturalLanguageTask(const QString& input) override
-    {
-        Q_UNUSED(input)
-        return {};
-    }
+    QFuture<AIParseResult> parseNaturalLanguageTask(const QString& input) override;
+    QFuture<AISuggestionResult> suggestScheduleChanges(const ScheduleContext& context) override;
 
-    QFuture<AISuggestionResult> suggestScheduleChanges(const ScheduleContext& context) override
-    {
-        Q_UNUSED(context)
-        return {};
-    }
+private:
+    QString m_apiKey;
+    QString m_endpoint = QStringLiteral("https://api.deepseek.com/chat/completions");
+    QString m_model = QStringLiteral("deepseek-chat");
 };

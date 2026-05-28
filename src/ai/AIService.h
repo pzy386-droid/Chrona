@@ -9,12 +9,14 @@ struct AIParseResult {
     bool supported = false;
     QVariantMap taskDraft;
     QString message;
+    QString provider;
 };
 
 struct AISuggestionResult {
     bool supported = false;
     QVariantMap suggestion;
     QString message;
+    QString provider;
 };
 
 struct ScheduleContext {

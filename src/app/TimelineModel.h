@@ -52,6 +52,8 @@ public:
 
     void setItems(const QVector<TimelineItem>& items);
     void setSelectedTaskId(int taskId);
+    std::optional<TimelineItem> firstBlockForTask(int taskId) const;
+    std::optional<TimelineItem> itemById(int itemId) const;
     const QVector<TimelineItem>& items() const;
 
 private:

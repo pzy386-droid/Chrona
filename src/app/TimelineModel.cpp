@@ -97,6 +97,26 @@ void TimelineModel::setSelectedTaskId(int taskId)
     }
 }
 
+std::optional<TimelineItem> TimelineModel::firstBlockForTask(int taskId) const
+{
+    for (const auto& item : m_items) {
+        if (!item.event && item.taskId == taskId) {
+            return item;
+        }
+    }
+    return std::nullopt;
+}
+
+std::optional<TimelineItem> TimelineModel::itemById(int itemId) const
+{
+    for (const auto& item : m_items) {
+        if (item.id == itemId) {
+            return item;
+        }
+    }
+    return std::nullopt;
+}
+
 const QVector<TimelineItem>& TimelineModel::items() const
 {
     return m_items;

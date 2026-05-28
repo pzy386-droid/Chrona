@@ -194,7 +194,7 @@ Rectangle {
                                 y = (model.startMinute - root.dayStartMinute) * root.minuteHeight
                             }
                         }
-                        onSelectedTask: function(taskId) { ScheduleService.selectTask(taskId) }
+                        onSelectedTask: function(taskId) { ScheduleService.selectTimelineItem(taskId, model.id) }
                         onEventSettingsRequested: function(eventId, locked) {
                             eventEditor.eventId = eventId
                             eventEditor.locked = locked

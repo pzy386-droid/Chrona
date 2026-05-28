@@ -47,10 +47,10 @@ Rectangle {
                 spacing: 10
 
                 Text {
-                    text: "+"
+                    text: "AI"
                     color: "#7C8CFF"
-                    font.pixelSize: 22
-                    font.weight: Font.DemiBold
+                    font.pixelSize: 14
+                    font.weight: Font.Bold
                 }
 
                 TextField {
@@ -76,7 +76,7 @@ Rectangle {
                 }
 
                 CapsuleButton {
-                    text: qsTr("安排")
+                    text: qsTr("AI 规划")
                     onClicked: {
                         if (input.text.trim().length > 0) {
                             root.addRequested(input.text.trim())
@@ -165,7 +165,7 @@ Rectangle {
         property bool muted: false
         signal clicked()
 
-        width: muted ? 88 : 68
+        width: muted ? 88 : 76
         height: 38
         radius: 8
         color: muted ? (mouse.containsMouse ? "#202638" : "#161A23") : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
