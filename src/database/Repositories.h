@@ -23,6 +23,7 @@ public:
     QVector<Task> allTasks() const;
     bool createTask(const Task& task, const QString& categoryName) const;
     bool updateTask(const Task& task, const QString& categoryName) const;
+    bool updateScheduleStatuses(const QVector<int>& scheduledTaskIds, const QVector<int>& couldNotFitTaskIds) const;
     bool completeTask(int taskId) const;
     bool deleteTask(int taskId) const;
 
@@ -36,6 +37,7 @@ public:
     explicit CalendarRepository(QSqlDatabase db);
     QVector<CalendarEvent> eventsBetween(const QDateTime& start, const QDateTime& end) const;
     bool createEvent(const CalendarEvent& event, const QString& categoryName) const;
+    bool updateEvent(const CalendarEvent& event, const QString& categoryName) const;
     bool setEventLocked(int eventId, bool locked) const;
     bool moveEvent(int eventId, const QDateTime& start, const QDateTime& end) const;
 
@@ -51,7 +53,9 @@ public:
     QVector<TimeBlock> lockedBlocksBetween(const QDateTime& start, const QDateTime& end) const;
     int createScheduleRun(const ScheduleWindow& window, const QString& reason) const;
     bool replaceAutoBlocks(const ScheduleWindow& window, const QVector<TimeBlock>& blocks, int scheduleRunId) const;
+    int createBlock(const TimeBlock& block) const;
     bool moveBlock(int blockId, const QDateTime& start, const QDateTime& end) const;
+    bool setBlockSource(int blockId, BlockSource source) const;
 
 private:
     QSqlDatabase m_db;

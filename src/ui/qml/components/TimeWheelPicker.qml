@@ -6,6 +6,7 @@ Popup {
     id: root
     property string title: qsTr("选择时间")
     property string timeText: "09:00"
+    property bool suppressApply: false
     signal accepted(string timeText)
 
     width: 232
@@ -21,13 +22,24 @@ Popup {
         var m = Number(parts[1])
         if (isNaN(h)) h = 9
         if (isNaN(m)) m = 0
+        root.suppressApply = true
         hourWheel.setIndex(Math.max(0, Math.min(23, h)))
-        minuteWheel.setIndex(Math.max(0, Math.min(3, Math.round(m / 15))))
+        minuteWheel.setIndex(Math.max(0, Math.min(59, m)))
+        root.suppressApply = false
+        root.timeText = currentTimeText()
         root.open()
     }
 
     function currentTimeText() {
-        return String(hourWheel.selectedIndex).padStart(2, "0") + ":" + String(minuteWheel.selectedIndex * 15).padStart(2, "0")
+        return String(hourWheel.selectedIndex).padStart(2, "0") + ":" + String(minuteWheel.selectedIndex).padStart(2, "0")
+    }
+
+    function applyCurrent() {
+        var value = currentTimeText()
+        if (!root.suppressApply && root.timeText !== value) {
+            root.timeText = value
+            root.accepted(value)
+        }
     }
 
     background: Rectangle {
@@ -113,30 +125,18 @@ Popup {
                     id: minuteWheel
                     width: 48
                     height: parent.height
-                    count: 4
-                    step: 15
+                    count: 60
+                    step: 1
                 }
             }
         }
 
-        RowLayout {
+        Text {
             Layout.fillWidth: true
-            spacing: 8
-            Item { Layout.fillWidth: true }
-            PickerButton {
-                text: qsTr("取消")
-                muted: true
-                onClicked: root.close()
-            }
-            PickerButton {
-                text: qsTr("完成")
-                onClicked: {
-                    var value = root.currentTimeText()
-                    root.timeText = value
-                    root.accepted(value)
-                    root.close()
-                }
-            }
+            text: qsTr("滑动选择，点击外部返回")
+            color: "#7F8A9E"
+            font.pixelSize: 11
+            horizontalAlignment: Text.AlignRight
         }
     }
 
@@ -150,13 +150,13 @@ Popup {
         model: count
         clip: true
         interactive: true
-        flickDeceleration: 6200
-        maximumFlickVelocity: 900
+        flickDeceleration: 15000
+        maximumFlickVelocity: 420
         boundsBehavior: Flickable.StopAtBounds
         topMargin: (height - itemSize) / 2
         bottomMargin: (height - itemSize) / 2
         snapMode: ListView.SnapOneItem
-        highlightMoveDuration: 170
+        highlightMoveDuration: 130
         preferredHighlightBegin: height / 2 - itemSize / 2
         preferredHighlightEnd: height / 2 + itemSize / 2
         highlightRangeMode: ListView.ApplyRange
@@ -166,6 +166,7 @@ Popup {
             selectedIndex = index
             currentIndex = index
             positionViewAtIndex(index, ListView.Center)
+            root.applyCurrent()
         }
 
         function updateSelected() {
@@ -174,16 +175,20 @@ Popup {
                 idx = selectedIndex
             }
             selectedIndex = Math.max(0, Math.min(count - 1, idx))
-            currentIndex = selectedIndex
         }
 
+        onContentYChanged: {
+            if (moving || flicking) {
+                updateSelected()
+            }
+        }
         onMovementEnded: {
             updateSelected()
-            positionViewAtIndex(selectedIndex, ListView.Center)
+            root.applyCurrent()
         }
         onFlickEnded: {
             updateSelected()
-            positionViewAtIndex(selectedIndex, ListView.Center)
+            root.applyCurrent()
         }
 
         delegate: Item {
@@ -200,35 +205,6 @@ Popup {
                 font.weight: distance === 0 ? Font.DemiBold : Font.Normal
                 horizontalAlignment: Text.AlignHCenter
             }
-        }
-    }
-
-    component PickerButton: Rectangle {
-        id: button
-        property alias text: label.text
-        property bool muted: false
-        signal clicked()
-
-        width: 68
-        height: 36
-        radius: 9
-        color: muted ? (mouse.containsMouse ? "#202638" : "#151A23") : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
-        border.width: muted ? 1 : 0
-        border.color: "#30384C"
-
-        Text {
-            id: label
-            anchors.centerIn: parent
-            color: muted ? "#AAB4C6" : "white"
-            font.pixelSize: 13
-            font.weight: Font.DemiBold
-        }
-
-        MouseArea {
-            id: mouse
-            anchors.fill: parent
-            hoverEnabled: true
-            onClicked: button.clicked()
         }
     }
 }

@@ -130,12 +130,104 @@ Item {
             Layout.fillWidth: true
             focusItem: ScheduleService.focusItem
             unscheduledCount: ScheduleService.unscheduledCount
+            scheduleIssues: ScheduleService.scheduleIssues
             onFocusStarted: {
                 root.focusRemainingSeconds = root.focusDurationSeconds
                 root.focusActive = true
                 focusTimer.restart()
             }
             onFocusStopped: root.endFocus(false)
+        }
+
+        Rectangle {
+            visible: ScheduleService.unscheduledCount > 0
+            Layout.fillWidth: true
+            Layout.preferredHeight: 78
+            radius: 8
+            color: "#161A23"
+            border.width: 1
+            border.color: "#3A2A2A"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+                spacing: 14
+
+                Rectangle {
+                    width: 5
+                    Layout.fillHeight: true
+                    radius: 3
+                    color: "#FF7A59"
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 5
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Text {
+                            Layout.fillWidth: true
+                            text: qsTr("调度冲突")
+                            color: "#FFB09B"
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                        }
+                        Text {
+                            text: qsTr("%1 个任务无法完整排入").arg(ScheduleService.unscheduledCount)
+                            color: "#8C96AA"
+                            font.pixelSize: 12
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: {
+                            var issues = ScheduleService.scheduleIssues || []
+                            if (issues.length === 0) {
+                                return qsTr("请调整截止时间、减少预计时长，或扩大可学习时间。")
+                            }
+                            var first = issues[0]
+                            return qsTr("%1：%2，剩余 %3 分钟未安排")
+                                .arg(first.title || qsTr("任务"))
+                                .arg(first.reason || qsTr("容量不足"))
+                                .arg(first.remainingMinutes || 0)
+                        }
+                        color: "#C8D0DE"
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 112
+                    Layout.preferredHeight: 36
+                    radius: 8
+                    color: issueMouse.containsMouse ? "#202638" : "#11151D"
+                    border.width: 1
+                    border.color: "#30384C"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("重新规划")
+                        color: "#E6EAF2"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        id: issueMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onClicked: {
+                            ScheduleService.reschedule()
+                            quickAddToast.kind = "success"
+                            quickAddToast.text = qsTr("已重新规划")
+                            quickAddToast.open()
+                        }
+                    }
+                }
+            }
         }
 
         QuickAddBar {
@@ -166,7 +258,6 @@ Item {
                 ocrMessage.text = preview.message || ""
                 ocrPopup.open()
             }
-            onFixedEventRequested: fixedEventPopup.open()
         }
 
         TimelineView {
@@ -410,86 +501,6 @@ Item {
     }
 
     Popup {
-        id: fixedEventPopup
-        width: 440
-        height: 374
-        modal: true
-        focus: true
-        anchors.centerIn: parent
-        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: PopupBackground {}
-
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 20
-            spacing: 12
-            Text { text: qsTr("添加固定时间"); color: "#E6EAF2"; font.pixelSize: 20; font.weight: Font.DemiBold }
-            TextField { id: eventTitle; Layout.fillWidth: true; placeholderText: qsTr("例如：数据库实验课"); color: "#E6EAF2"; background: PopupFieldBackground {} }
-            DarkPills { id: eventDay; Layout.fillWidth: true; options: [qsTr("今天"), qsTr("明天"), qsTr("后天"), qsTr("第4天"), qsTr("第5天"), qsTr("第6天"), qsTr("第7天")] }
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-
-                TextField {
-                    id: eventStart
-                    text: "09:00"
-                    visible: false
-                }
-
-                TimeSelectButton {
-                    Layout.fillWidth: true
-                    value: eventStart.text || "09:00"
-                    onClicked: eventStartWheel.openWith(eventStart.text)
-                }
-
-                Text { text: "-"; color: "#667187"; font.pixelSize: 16; font.weight: Font.DemiBold }
-
-                TextField {
-                    id: eventEnd
-                    text: "10:30"
-                    visible: false
-                }
-
-                TimeSelectButton {
-                    Layout.fillWidth: true
-                    value: eventEnd.text || "10:30"
-                    onClicked: eventEndWheel.openWith(eventEnd.text)
-                }
-            }
-            TextField { id: eventCategory; Layout.fillWidth: true; text: qsTr("课程"); color: "#E6EAF2"; background: PopupFieldBackground {} }
-            RowLayout {
-                Layout.fillWidth: true
-                Text { Layout.fillWidth: true; text: qsTr("锁定后 Scheduler 永远避开这段时间"); color: "#8C96AA"; font.pixelSize: 12; elide: Text.ElideRight }
-                CheckBox { id: eventLocked; checked: true; text: qsTr("固定") }
-            }
-            Text { id: eventStatus; Layout.fillWidth: true; color: "#FFB09B"; font.pixelSize: 12; elide: Text.ElideRight }
-            RowLayout {
-                Layout.fillWidth: true
-                Item { Layout.fillWidth: true }
-                FocusButton { text: qsTr("取消"); muted: true; onClicked: fixedEventPopup.close() }
-                FocusButton {
-                    text: qsTr("加入")
-                    onClicked: {
-                        var startParts = eventStart.text.split(":")
-                        var endParts = eventEnd.text.split(":")
-                        var startMinute = Number(startParts[0]) * 60 + Number(startParts[1])
-                        var endMinute = Number(endParts[0]) * 60 + Number(endParts[1])
-                        var result = ScheduleService.addFixedEvent(eventTitle.text, eventDay.currentIndex, startMinute, endMinute - startMinute, eventLocked.checked, eventCategory.text)
-                        if (result.ok) {
-                            fixedEventPopup.close()
-                            quickAddToast.kind = "success"
-                            quickAddToast.text = result.message
-                            quickAddToast.open()
-                        } else {
-                            eventStatus.text = result.message
-                        }
-                    }
-                }
-            }
-        }
-    }
-
-    Popup {
         id: ocrPopup
         width: 480
         height: 300
@@ -531,18 +542,6 @@ Item {
                 }
             }
         }
-    }
-
-    TimeWheelPicker {
-        id: eventStartWheel
-        title: qsTr("选择起始时间")
-        onAccepted: function(value) { eventStart.text = value }
-    }
-
-    TimeWheelPicker {
-        id: eventEndWheel
-        title: qsTr("选择终止时间")
-        onAccepted: function(value) { eventEnd.text = value }
     }
 
     component DensityControl: Rectangle {

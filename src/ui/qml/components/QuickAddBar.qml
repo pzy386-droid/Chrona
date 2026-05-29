@@ -7,7 +7,6 @@ Rectangle {
     property var capacityStats: ({})
     signal addRequested(string text)
     signal imagePreviewRequested(string fileUrl)
-    signal fixedEventRequested()
 
     height: 112
     radius: 8
@@ -67,12 +66,6 @@ Rectangle {
                             text = ""
                         }
                     }
-                }
-
-                CapsuleButton {
-                    text: qsTr("固定时间")
-                    muted: true
-                    onClicked: root.fixedEventRequested()
                 }
 
                 CapsuleButton {

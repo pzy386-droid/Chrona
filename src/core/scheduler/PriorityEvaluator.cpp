@@ -27,5 +27,12 @@ int PriorityEvaluator::score(const Task& task, const QDateTime& now) const
     }
 
     value += qMin(task.remainingMinutes / 30, 12) * 12;
+    value += qBound(0, task.effortLevel, 2) * 36;
+    if (task.deadlineType == DeadlineType::Hard) {
+        value += 180;
+    }
+    if (task.startDate.isValid() && task.startDate > now) {
+        value -= qMin(static_cast<int>(now.secsTo(task.startDate) / 3600), 72);
+    }
     return value;
 }

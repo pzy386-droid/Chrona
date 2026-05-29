@@ -51,7 +51,7 @@ QVariant TimelineModel::data(const QModelIndex& index, int role) const
     case IsEventLockedRole:
         return item.eventLocked;
     case SelectedRole:
-        return item.taskId != 0 && item.taskId == m_selectedTaskId;
+        return item.id == m_selectedItemId || (m_selectedItemId == 0 && item.taskId != 0 && item.taskId == m_selectedTaskId);
     default:
         return {};
     }
@@ -81,6 +81,23 @@ QHash<int, QByteArray> TimelineModel::roleNames() const
 
 void TimelineModel::setItems(const QVector<TimelineItem>& items)
 {
+    if (m_items.size() == items.size()) {
+        bool sameItems = true;
+        for (int i = 0; i < items.size(); ++i) {
+            if (m_items.at(i).id != items.at(i).id) {
+                sameItems = false;
+                break;
+            }
+        }
+        if (sameItems) {
+            m_items = items;
+            if (!m_items.isEmpty()) {
+                emit dataChanged(index(0, 0), index(m_items.size() - 1, 0));
+            }
+            return;
+        }
+    }
+
     beginResetModel();
     m_items = items;
     endResetModel();
@@ -92,6 +109,18 @@ void TimelineModel::setSelectedTaskId(int taskId)
         return;
     }
     m_selectedTaskId = taskId;
+    m_selectedItemId = 0;
+    if (!m_items.isEmpty()) {
+        emit dataChanged(index(0, 0), index(m_items.size() - 1, 0), {SelectedRole});
+    }
+}
+
+void TimelineModel::setSelectedItemId(int itemId)
+{
+    if (m_selectedItemId == itemId) {
+        return;
+    }
+    m_selectedItemId = itemId;
     if (!m_items.isEmpty()) {
         emit dataChanged(index(0, 0), index(m_items.size() - 1, 0), {SelectedRole});
     }

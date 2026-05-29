@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import Chrona
 
 Rectangle {
     id: root
@@ -16,6 +17,7 @@ Rectangle {
     property bool event: false
     property bool locked: false
     property bool eventLocked: false
+    readonly property bool lockActive: root.locked || root.eventLocked
     property bool selected: false
     property real dayWidth: 120
     property real minuteHeight: 1
@@ -27,9 +29,10 @@ Rectangle {
     property real pressX: 0
     property real pressY: 0
     property bool wasDragged: false
+    property bool readyForResizeAnimation: false
+    property real resizeGlowOpacity: 0
     signal moveRequested(int blockId, int dayIndex, int startMinute, int durationMinutes)
-    signal selectedTask(int taskId)
-    signal eventSettingsRequested(int eventId, bool locked)
+    signal selectedItem(int taskId, int blockId)
 
     radius: 8
     color: event ? "#242A36" : selected ? "#252D44" : "#1A2030"
@@ -40,7 +43,12 @@ Rectangle {
 
     Behavior on x { enabled: !mouse.drag.active; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
     Behavior on y { enabled: !mouse.drag.active; NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-    Behavior on height { NumberAnimation { duration: 220; easing.type: Easing.OutCubic } }
+    Behavior on height {
+        NumberAnimation {
+            duration: 360
+            easing.type: Easing.OutCubic
+        }
+    }
     Behavior on opacity { NumberAnimation { duration: 130 } }
     Behavior on color { ColorAnimation { duration: 160 } }
 
@@ -54,24 +62,82 @@ Rectangle {
     }
 
     Rectangle {
-        visible: root.event
+        anchors.fill: parent
+        radius: root.radius
+        color: root.accentColor
+        opacity: root.resizeGlowOpacity
+        visible: opacity > 0
+    }
+
+    SequentialAnimation {
+        id: resizeGlow
+        NumberAnimation {
+            target: root
+            property: "resizeGlowOpacity"
+            to: 0.22
+            duration: 80
+            easing.type: Easing.OutCubic
+        }
+        NumberAnimation {
+            target: root
+            property: "resizeGlowOpacity"
+            to: 0
+            duration: 320
+            easing.type: Easing.OutCubic
+        }
+    }
+
+    Component.onCompleted: root.readyForResizeAnimation = true
+    onDurationMinutesChanged: {
+        if (root.readyForResizeAnimation) {
+            resizeGlow.restart()
+        }
+    }
+
+    Item {
+        id: lockBadge
+        visible: root.lockActive || opacity > 0
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.rightMargin: 7
         anchors.topMargin: 7
-        width: root.eventLocked ? 34 : 46
-        height: 18
-        radius: 6
-        color: root.eventLocked ? "#2D3342" : "#1E3B34"
-        border.width: 1
-        border.color: root.eventLocked ? "#556074" : "#4FAE85"
+        width: 20
+        height: 20
+        opacity: root.lockActive ? 1 : 0
+        scale: root.lockActive ? 1 : 0.72
 
-        Text {
-            anchors.centerIn: parent
-            text: root.eventLocked ? qsTr("固定") : qsTr("可移动")
-            color: root.eventLocked ? "#AAB4C6" : "#A9F0C9"
-            font.pixelSize: 10
-            font.weight: Font.DemiBold
+        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
+        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 7
+            color: "#2D3342"
+            border.width: 1
+            border.color: "#566176"
+        }
+
+        Rectangle {
+            x: 5
+            y: 4
+            width: 10
+            height: 8
+            radius: 5
+            color: "transparent"
+            border.width: 2
+            border.color: "#E6EAF2"
+            transformOrigin: Item.BottomRight
+            rotation: root.lockActive ? 0 : -18
+            Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+        }
+
+        Rectangle {
+            x: 5
+            y: 10
+            width: 10
+            height: 7
+            radius: 2
+            color: "#E6EAF2"
         }
     }
 
@@ -126,6 +192,8 @@ Rectangle {
             root.pressX = root.x
             root.pressY = root.y
             root.wasDragged = false
+            ScheduleService.selectTimelineItem(root.taskId, root.blockId)
+            root.selectedItem(root.taskId, root.blockId)
         }
         onPositionChanged: {
             if (pressed && (Math.abs(root.x - root.pressX) > 3 || Math.abs(root.y - root.pressY) > 3)) {
@@ -146,20 +214,8 @@ Rectangle {
             root.y = (nextMinute - root.dayStartMinute) * root.minuteHeight
             root.moveRequested(root.blockId, nextDay, nextMinute, root.durationMinutes)
         }
-        onClicked: {
-            if (root.wasDragged) {
-                return
-            }
-            if (root.event) {
-                root.eventSettingsRequested(Math.abs(root.blockId), root.eventLocked)
-            } else if (root.taskId > 0) {
-                root.selectedTask(root.taskId)
-            }
-        }
         onDoubleClicked: {
-            if (!root.event && root.taskId > 0) {
-                root.selectedTask(root.taskId)
-            }
+            root.selectedItem(root.taskId, root.blockId)
         }
     }
 }
