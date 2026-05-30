@@ -11,6 +11,7 @@ struct CalendarEvent {
     QDateTime end;
     EventType type = EventType::FixedEvent;
     std::optional<int> categoryId;
+    QString categoryName;
     QString categoryColor;
     bool locked = true;
 };

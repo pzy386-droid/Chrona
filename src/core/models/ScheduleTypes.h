@@ -18,6 +18,17 @@ enum class TaskStatus {
     Archived = 4
 };
 
+enum class DeadlineType {
+    Soft = 0,
+    Hard = 1
+};
+
+enum class ScheduleStatus {
+    Unscheduled = 0,
+    Scheduled = 1,
+    CouldNotFit = 2
+};
+
 enum class EventType {
     Course = 0,
     FixedEvent = 1,

@@ -55,11 +55,18 @@ bool Migrations::run(QSqlDatabase db)
               id INTEGER PRIMARY KEY AUTOINCREMENT,
               title TEXT NOT NULL,
               notes TEXT,
+              start_date TEXT,
               deadline TEXT NOT NULL,
+              deadline_type INTEGER NOT NULL DEFAULT 0,
               estimated_minutes INTEGER NOT NULL,
               estimated_hours REAL NOT NULL DEFAULT 0,
               remaining_minutes INTEGER NOT NULL,
               preferred_study_time TEXT,
+              auto_schedule_enabled INTEGER NOT NULL DEFAULT 1,
+              min_chunk_minutes INTEGER NOT NULL DEFAULT 30,
+              ideal_chunk_minutes INTEGER NOT NULL DEFAULT 90,
+              effort_level INTEGER NOT NULL DEFAULT 1,
+              schedule_status INTEGER NOT NULL DEFAULT 0,
               priority INTEGER NOT NULL,
               status INTEGER NOT NULL,
               category_id INTEGER,
@@ -67,8 +74,15 @@ bool Migrations::run(QSqlDatabase db)
               updated_at TEXT NOT NULL
             )
         )SQL")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("start_date"), QStringLiteral("TEXT")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("deadline_type"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")) &&
         addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("estimated_hours"), QStringLiteral("REAL NOT NULL DEFAULT 0")) &&
         addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("preferred_study_time"), QStringLiteral("TEXT")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("auto_schedule_enabled"), QStringLiteral("INTEGER NOT NULL DEFAULT 1")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("min_chunk_minutes"), QStringLiteral("INTEGER NOT NULL DEFAULT 30")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("ideal_chunk_minutes"), QStringLiteral("INTEGER NOT NULL DEFAULT 90")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("effort_level"), QStringLiteral("INTEGER NOT NULL DEFAULT 1")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("schedule_status"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")) &&
         exec(db, QStringLiteral(R"SQL(
             CREATE TABLE IF NOT EXISTS calendar_events (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -158,8 +172,9 @@ bool Migrations::seed(QSqlDatabase db)
 
     QSqlQuery task(db);
     task.prepare(QStringLiteral(R"SQL(
-        INSERT INTO tasks(title, notes, deadline, estimated_minutes, estimated_hours, remaining_minutes, preferred_study_time, priority, status, category_id, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO tasks(title, notes, start_date, deadline, deadline_type, estimated_minutes, estimated_hours, remaining_minutes, preferred_study_time,
+                          auto_schedule_enabled, min_chunk_minutes, ideal_chunk_minutes, effort_level, schedule_status, priority, status, category_id, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )SQL"));
 
     struct SeedTask {
@@ -181,11 +196,18 @@ bool Migrations::seed(QSqlDatabase db)
     for (const auto& item : tasks) {
         task.addBindValue(item.title);
         task.addBindValue(item.notes);
+        task.addBindValue(iso(QDateTime(QDate::currentDate(), QTime(8, 0))));
         task.addBindValue(iso(QDateTime(QDate::currentDate().addDays(item.days), QTime(23, 59))));
+        task.addBindValue(static_cast<int>(DeadlineType::Soft));
         task.addBindValue(item.minutes);
         task.addBindValue(item.minutes / 60.0);
         task.addBindValue(item.minutes);
         task.addBindValue(QStringLiteral("evening"));
+        task.addBindValue(1);
+        task.addBindValue(30);
+        task.addBindValue(90);
+        task.addBindValue(1);
+        task.addBindValue(static_cast<int>(ScheduleStatus::Unscheduled));
         task.addBindValue(item.priority);
         task.addBindValue(static_cast<int>(TaskStatus::Inbox));
         task.addBindValue(item.category);

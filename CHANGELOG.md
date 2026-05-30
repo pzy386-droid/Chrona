@@ -1,5 +1,40 @@
 # Chrona 产品迭代日志
 
+## v0.3.0 - Motion-style Time Block Interaction
+
+本次迭代聚焦 Motion 风格的时间块编辑闭环：减少冗余入口，把“任务详情”面板作为唯一的时间块编辑与固定控制中心，并修复多时间块任务在编辑、锁定、重规划时的状态错位问题。
+
+### 核心升级
+
+- 移除 Quick Add 中间的“固定时间”弹窗入口，避免出现两套固定时间设置逻辑。
+- 将“固定当前块”集成到右侧任务详情面板，并增加明确的小字说明。
+- 固定/取消固定改为即时生效：点击开关后立即写入当前具体 `blockId`。
+- 学习任务块与课程/固定事件统一显示右上角小锁；取消固定后小锁消失，但时间块保留当前位置。
+- 修复取消固定后时间块消失的问题：取消固定不再转回会被 Scheduler 清理的 `Auto`，而是转为 `UserDragged` 手动保留块。
+- 修复“左侧有任务但时间轴没有块，保存也生成不了”的问题：当任务没有现有 TimeBlock 时，保存会按右侧选择的日期和起止时间创建新的手动时间块。
+- 修复同名任务块编辑时容易跳到同任务第一个块的问题：重规划后优先保持当前具体 `blockId` 的选中状态。
+- 时间滚轮升级为 00-59 分钟完整选择，并降低滚动惯性，避免滚动过快和卡顿感。
+- 时间块高度变化增加延展动画与高亮反馈，保存或重规划时尽量保留 delegate，避免动画被重建打断。
+
+### 架构与数据
+
+- `TimeBlockRepository` 增加 `createBlock()` 和 `setBlockSource()`，支持从右侧面板创建/锁定/解锁具体时间块。
+- `ScheduleService` 增加 `setSelectedBlockLocked()`，统一任务时间块的锁定状态写入。
+- `TimelineModel` 优化数据刷新策略：同一批时间块仅做 `dataChanged`，减少整表 reset 带来的 UI 跳变。
+- Scheduler 会把手动保留/锁定的时间块计入已安排容量，避免后续自动排程重复生成同一任务的时间。
+
+### 清理与质量
+
+- 删除已经不再使用的 `addFixedEvent()` 后端入口。
+- 删除自定义时间滚轮中残留的旧“完成/取消”按钮组件和未调用的 `settleNow()`。
+- 移除 `CalendarPage.qml` 中旧固定时间 Popup 及其滚轮引用。
+- 保持 Qt Quick / QML + C++20 + SQLite 分层架构，AIService 与 Scheduler 继续解耦。
+
+### 验证
+
+- 冗余引用扫描通过：旧固定时间弹窗、旧滚轮按钮和 `addFixedEvent()` 均无残留引用。
+- `cmake --build --preset qt-mingw-debug` 构建通过。
+
 ## v0.2.0 - AI Scheduling Iteration
 
 本次迭代将 Chrona 从基础学习时间轴原型，推进为具备 AI 任务解析、可确认调度草稿和更完整 Time Block 编辑能力的智能学习调度系统。

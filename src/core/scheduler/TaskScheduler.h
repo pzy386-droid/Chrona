@@ -11,6 +11,14 @@
 struct ScheduleResult {
     QVector<TimeBlock> generatedBlocks;
     QVector<int> unscheduledTaskIds;
+    QVector<int> scheduledTaskIds;
+    struct Issue {
+        int taskId = 0;
+        QString title;
+        QString reason;
+        int remainingMinutes = 0;
+    };
+    QVector<Issue> issues;
 };
 
 class TaskScheduler {

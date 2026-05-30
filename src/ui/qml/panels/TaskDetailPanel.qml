@@ -6,9 +6,28 @@ import Chrona
 Rectangle {
     id: root
     property var task: ({})
+    property string editStartTime: "09:00"
+    property string editEndTime: "10:30"
     readonly property bool hasTask: task && task.id
+    readonly property bool isEvent: hasTask && task.kind === "event"
     readonly property var preferredValues: ["morning", "afternoon", "evening"]
     readonly property var energyValues: ["low", "medium", "high"]
+    readonly property var minChunkValues: [30, 45, 60]
+    readonly property var idealChunkValues: [60, 90, 120]
+    signal closeRequested()
+
+    function nearestIndex(values, value) {
+        var best = 0
+        var bestDistance = Math.abs(values[0] - value)
+        for (var i = 1; i < values.length; ++i) {
+            var distance = Math.abs(values[i] - value)
+            if (distance < bestDistance) {
+                best = i
+                bestDistance = distance
+            }
+        }
+        return best
+    }
 
     function syncFields() {
         if (!hasTask) {
@@ -17,13 +36,19 @@ Rectangle {
         titleField.text = task.title || ""
         notesField.text = task.notes || ""
         deadlineField.text = task.deadlineText || ""
-        startTimeField.text = task.blockStartText || "09:00"
-        endTimeField.text = task.blockEndText || "10:30"
+        editStartTime = task.blockStartText || "09:00"
+        editEndTime = task.blockEndText || "10:30"
         dayPicker.currentIndex = Math.max(0, Math.min(6, task.blockDayIndex || 0))
         priorityPicker.currentIndex = Math.max(0, Math.min(2, task.priority || 0))
         categoryField.text = task.categoryName || ""
         var preferred = task.preferredStudyTime || "evening"
         preferredPicker.currentIndex = Math.max(0, preferredValues.indexOf(preferred))
+        autoScheduleToggle.checked = task.autoScheduleEnabled !== false
+        deadlineTypePicker.currentIndex = Math.max(0, Math.min(1, task.deadlineType || 0))
+        minChunkPicker.currentIndex = nearestIndex(minChunkValues, task.minChunkMinutes || 30)
+        idealChunkPicker.currentIndex = nearestIndex(idealChunkValues, task.idealChunkMinutes || 90)
+        effortPicker.currentIndex = Math.max(0, Math.min(2, task.effortLevel || 1))
+        eventLockToggle.checked = task.isLocked === true
         statusText.text = ""
     }
 
@@ -52,6 +77,55 @@ Rectangle {
                 color: "#AAB4C6"
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
+            }
+
+            RowLayout {
+                visible: root.hasTask
+                spacing: 7
+
+                Text {
+                    text: qsTr("固定当前块")
+                    color: "#8D98AB"
+                    font.pixelSize: 11
+                    font.weight: Font.DemiBold
+                }
+
+                ToggleSwitch {
+                    id: eventLockToggle
+                    checked: true
+                    onToggled: function(checked) {
+                        var result = root.isEvent
+                            ? { ok: ScheduleService.setEventLocked(root.task.id, checked), message: checked ? qsTr("已固定当前时间块") : qsTr("已取消固定") }
+                            : ScheduleService.setSelectedBlockLocked(checked)
+                        statusText.color = result.ok ? "#A9F0C9" : "#FFB09B"
+                        statusText.text = result.message || ""
+                    }
+                }
+            }
+
+            Rectangle {
+                width: 32
+                height: 32
+                radius: 8
+                color: closeMouse.containsMouse ? "#202638" : "#151A23"
+                border.width: 1
+                border.color: "#2C3548"
+
+                Text {
+                    anchors.centerIn: parent
+                    text: "›"
+                    color: "#AAB4C6"
+                    font.pixelSize: 22
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    id: closeMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.closeRequested()
+                }
             }
 
             Rectangle {
@@ -120,7 +194,7 @@ Rectangle {
                 width: parent.width
                 spacing: 13
 
-                FieldLabel { text: qsTr("任务标题") }
+                FieldLabel { text: root.isEvent ? qsTr("标题") : qsTr("任务标题") }
                 TextField {
                     id: titleField
                     Layout.fillWidth: true
@@ -134,9 +208,13 @@ Rectangle {
                     background: FieldBackground {}
                 }
 
-                FieldLabel { text: qsTr("备注") }
+                FieldLabel {
+                    visible: !root.isEvent
+                    text: qsTr("备注")
+                }
                 TextArea {
                     id: notesField
+                    visible: !root.isEvent
                     Layout.fillWidth: true
                     Layout.preferredHeight: 88
                     color: "#E6EAF2"
@@ -149,9 +227,13 @@ Rectangle {
                     background: FieldBackground {}
                 }
 
-                FieldLabel { text: qsTr("截止时间") }
+                FieldLabel {
+                    visible: !root.isEvent
+                    text: qsTr("截止时间")
+                }
                 TextField {
                     id: deadlineField
+                    visible: !root.isEvent
                     Layout.fillWidth: true
                     color: "#E6EAF2"
                     selectedTextColor: "white"
@@ -173,16 +255,10 @@ Rectangle {
                     Layout.fillWidth: true
                     spacing: 10
 
-                    TextField {
-                        id: startTimeField
-                        Layout.fillWidth: true
-                        visible: false
-                    }
-
                     TimeSelectButton {
                         Layout.fillWidth: true
-                        value: startTimeField.text || "09:00"
-                        onClicked: startWheel.openWith(startTimeField.text)
+                        value: root.editStartTime || "09:00"
+                        onClicked: startWheel.openWith(root.editStartTime)
                     }
 
                     Text {
@@ -191,16 +267,10 @@ Rectangle {
                         font.pixelSize: 16
                     }
 
-                    TextField {
-                        id: endTimeField
-                        Layout.fillWidth: true
-                        visible: false
-                    }
-
                     TimeSelectButton {
                         Layout.fillWidth: true
-                        value: endTimeField.text || "10:30"
-                        onClicked: endWheel.openWith(endTimeField.text)
+                        value: root.editEndTime || "10:30"
+                        onClicked: endWheel.openWith(root.editEndTime)
                     }
                 }
 
@@ -211,6 +281,7 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
+                        visible: !root.isEvent
                         FieldLabel { text: qsTr("优先级") }
                         OptionPills {
                             id: priorityPicker
@@ -233,11 +304,110 @@ Rectangle {
                     background: FieldBackground {}
                 }
 
-                FieldLabel { text: qsTr("偏好学习时间") }
+                FieldLabel {
+                    visible: !root.isEvent
+                    text: qsTr("偏好学习时间")
+                }
                 OptionPills {
                     id: preferredPicker
+                    visible: !root.isEvent
                     Layout.fillWidth: true
                     options: [qsTr("上午"), qsTr("下午"), qsTr("晚上")]
+                }
+
+                FieldLabel {
+                    visible: !root.isEvent
+                    text: qsTr("自动调度偏好")
+                }
+                Rectangle {
+                    visible: !root.isEvent
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 46
+                    radius: 8
+                    color: "#151A23"
+                    border.width: 1
+                    border.color: "#2C3548"
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 8
+                        spacing: 10
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 2
+                            Text {
+                                text: qsTr("允许 Scheduler 自动排程")
+                                color: "#E6EAF2"
+                                font.pixelSize: 12
+                                font.weight: Font.DemiBold
+                            }
+                            Text {
+                                text: qsTr("关闭后仅保留你手动拖拽的时间块")
+                                color: "#7F8A9E"
+                                font.pixelSize: 10
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        ToggleSwitch {
+                            id: autoScheduleToggle
+                            checked: true
+                        }
+                    }
+                }
+
+                RowLayout {
+                    visible: !root.isEvent
+                    Layout.fillWidth: true
+                    spacing: 10
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        FieldLabel { text: qsTr("截止类型") }
+                        OptionPills {
+                            id: deadlineTypePicker
+                            Layout.fillWidth: true
+                            options: [qsTr("软"), qsTr("硬")]
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        FieldLabel { text: qsTr("学习强度") }
+                        OptionPills {
+                            id: effortPicker
+                            Layout.fillWidth: true
+                            options: [qsTr("轻"), qsTr("中"), qsTr("重")]
+                        }
+                    }
+                }
+
+                RowLayout {
+                    visible: !root.isEvent
+                    Layout.fillWidth: true
+                    spacing: 10
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        FieldLabel { text: qsTr("最短块") }
+                        OptionPills {
+                            id: minChunkPicker
+                            Layout.fillWidth: true
+                            options: [qsTr("30"), qsTr("45"), qsTr("60")]
+                        }
+                    }
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+                        FieldLabel { text: qsTr("理想块") }
+                        OptionPills {
+                            id: idealChunkPicker
+                            Layout.fillWidth: true
+                            options: [qsTr("60"), qsTr("90"), qsTr("120")]
+                        }
+                    }
                 }
 
                 Text {
@@ -251,7 +421,7 @@ Rectangle {
         }
 
         RowLayout {
-            visible: root.hasTask
+            visible: root.hasTask && !root.isEvent
             Layout.fillWidth: true
             spacing: 10
 
@@ -264,34 +434,84 @@ Rectangle {
                     statusText.text = result.message || ""
                 }
             }
-
-            ActionButton {
-                Layout.fillWidth: true
-                text: qsTr("完成")
-                muted: true
-                onClicked: ScheduleService.completeTask(root.task.id)
-            }
         }
 
         ActionButton {
             visible: root.hasTask
             Layout.fillWidth: true
-            text: qsTr("保存任务和时间块")
+            text: root.isEvent ? qsTr("保存固定时间") : qsTr("保存任务和时间块")
             onClicked: {
-                var moveResult = ScheduleService.moveSelectedTaskBlock(dayPicker.currentIndex, startTimeField.text, endTimeField.text)
+                var savedTitle = titleField.text
+                var savedNotes = notesField.text
+                var savedDeadline = deadlineField.text
+                var savedCategory = categoryField.text
+                var savedDayIndex = dayPicker.currentIndex
+                var savedStartTime = root.editStartTime
+                var savedEndTime = root.editEndTime
+                var savedPriority = priorityPicker.currentIndex
+                var savedPreferred = root.preferredValues[preferredPicker.currentIndex]
+                var savedAutoSchedule = autoScheduleToggle.checked
+                var savedDeadlineType = deadlineTypePicker.currentIndex
+                var savedMinChunk = root.minChunkValues[minChunkPicker.currentIndex]
+                var savedIdealChunk = root.idealChunkValues[idealChunkPicker.currentIndex]
+                var savedEffort = effortPicker.currentIndex
+                var savedEventLocked = eventLockToggle.checked
+
+                var startParts = String(savedStartTime).split(":")
+                var endParts = String(savedEndTime).split(":")
+                var startMinute = Number(startParts[0]) * 60 + Number(startParts[1])
+                var endMinute = Number(endParts[0]) * 60 + Number(endParts[1])
+                if (startParts.length !== 2 || endParts.length !== 2 || isNaN(startMinute) || isNaN(endMinute) || endMinute <= startMinute) {
+                    statusText.color = "#FFB09B"
+                    statusText.text = qsTr("结束时间必须晚于起始时间")
+                    return
+                }
+
+                if (root.isEvent) {
+                    var eventResult = ScheduleService.updateSelectedEvent(
+                        savedTitle,
+                        savedDayIndex,
+                        savedStartTime,
+                        savedEndTime,
+                        savedEventLocked,
+                        savedCategory
+                    )
+                    statusText.color = eventResult.ok ? "#A9F0C9" : "#FFB09B"
+                    statusText.text = eventResult.message || ""
+                    return
+                }
+
+                var moveResult = ScheduleService.moveSelectedTaskBlock(savedDayIndex, savedStartTime, savedEndTime)
+                if (!moveResult.ok) {
+                    statusText.color = "#FFB09B"
+                    statusText.text = moveResult.message || qsTr("移动失败")
+                    return
+                }
+
+                var lockResult = ScheduleService.setSelectedBlockLocked(savedEventLocked)
+                if (!lockResult.ok) {
+                    statusText.color = "#FFB09B"
+                    statusText.text = lockResult.message || qsTr("固定状态保存失败")
+                    return
+                }
+
                 var updateResult = ScheduleService.updateTask(
                     root.task.id,
-                    titleField.text,
-                    notesField.text,
-                    deadlineField.text,
+                    savedTitle,
+                    savedNotes,
+                    savedDeadline,
                     root.task.estimatedMinutes || 60,
-                    priorityPicker.currentIndex,
-                    categoryField.text,
-                    root.preferredValues[preferredPicker.currentIndex]
+                    savedPriority,
+                    savedCategory,
+                    savedPreferred,
+                    savedAutoSchedule,
+                    savedDeadlineType,
+                    savedMinChunk,
+                    savedIdealChunk,
+                    savedEffort
                 )
-                var ok = updateResult.ok && moveResult.ok
-                statusText.color = ok ? "#A9F0C9" : "#FFB09B"
-                statusText.text = ok ? qsTr("已保存并移动时间块") : (moveResult.message || updateResult.message || qsTr("保存失败"))
+                statusText.color = updateResult.ok ? "#A9F0C9" : "#FFB09B"
+                statusText.text = updateResult.ok ? qsTr("已保存并移动时间块") : (updateResult.message || qsTr("保存失败"))
             }
         }
     }
@@ -301,13 +521,13 @@ Rectangle {
     TimeWheelPicker {
         id: startWheel
         title: qsTr("选择起始时间")
-        onAccepted: function(value) { startTimeField.text = value }
+        onAccepted: function(value) { root.editStartTime = value }
     }
 
     TimeWheelPicker {
         id: endWheel
         title: qsTr("选择终止时间")
-        onAccepted: function(value) { endTimeField.text = value }
+        onAccepted: function(value) { root.editEndTime = value }
     }
 
     Popup {
@@ -630,6 +850,42 @@ Rectangle {
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
             onClicked: timeButton.clicked()
+        }
+    }
+
+    component ToggleSwitch: Rectangle {
+        id: toggle
+        property bool checked: false
+        signal toggled(bool checked)
+
+        Layout.preferredWidth: 48
+        Layout.preferredHeight: 28
+        radius: 14
+        color: toggle.checked ? "#7C8CFF" : "#273044"
+        border.width: 1
+        border.color: toggle.checked ? "#96A2FF" : "#3A445A"
+
+        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on border.color { ColorAnimation { duration: 150 } }
+
+        Rectangle {
+            width: 22
+            height: 22
+            radius: 11
+            x: toggle.checked ? parent.width - width - 3 : 3
+            anchors.verticalCenter: parent.verticalCenter
+            color: "#F3F5FF"
+            Behavior on x { NumberAnimation { duration: 170; easing.type: Easing.OutCubic } }
+        }
+
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: {
+                toggle.checked = !toggle.checked
+                toggle.toggled(toggle.checked)
+            }
         }
     }
 

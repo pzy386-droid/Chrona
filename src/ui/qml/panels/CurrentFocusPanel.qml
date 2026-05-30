@@ -7,6 +7,7 @@ Rectangle {
     id: root
     property var focusItem: ({})
     property int unscheduledCount: 0
+    property var scheduleIssues: []
     property bool active: false
     signal focusStarted()
     signal focusStopped()
@@ -70,9 +71,21 @@ Rectangle {
 
             Text {
                 anchors.centerIn: parent
-                text: qsTr("%1 个任务待处理").arg(root.unscheduledCount)
+                width: parent.width - 18
+                text: {
+                    if (root.scheduleIssues && root.scheduleIssues.length > 0) {
+                        var issue = root.scheduleIssues[0]
+                        return qsTr("%1：%2").arg(issue.title || qsTr("任务")).arg(issue.reason || qsTr("无法按时排入"))
+                    }
+                    return qsTr("%1 个任务待处理").arg(root.unscheduledCount)
+                }
                 color: "#FFB09B"
-                font.pixelSize: 13
+                font.pixelSize: 11
+                lineHeight: 1.15
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+                horizontalAlignment: Text.AlignHCenter
             }
         }
 
