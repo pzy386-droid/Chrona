@@ -11,7 +11,8 @@
 
 #include <QObject>
 #include <QVariantMap>
-
+#include <QDate>
+#include <QVariantList>
 class ScheduleService : public QObject {
     Q_OBJECT
     Q_PROPERTY(QObject* timelineModel READ timelineModel CONSTANT)

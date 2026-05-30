@@ -2,7 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Chrona
-
+import "./panels"
 ApplicationWindow {
     id: window
     width: 1440
@@ -11,7 +11,6 @@ ApplicationWindow {
     title: "Chrona"
     color: "#0F1117"
     property bool detailOpen: true
-
     Connections {
         target: ScheduleService
         function onSelectedTaskChanged() {
@@ -85,5 +84,15 @@ ApplicationWindow {
                 onClicked: window.detailOpen = true
             }
         }
+       DailyPlanOverlay {
+        id: dailyPlanOverlay
+        anchors.fill: parent // 填满整个窗口
+        visible: true        // ⚠️ 调试阶段先设为 true，方便你马上看到效果调 UI
     }
+       EveningReviewOverlay {
+               id: eveningReviewOverlay
+               anchors.fill: parent
+               visible: false // 默认隐藏，由 Sidebar 里的按钮唤醒
+           }
+}
 }

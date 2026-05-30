@@ -160,5 +160,54 @@ Rectangle {
                 }
             }
         }
+        // 1. 占位弹簧：因为展开时 ListView 会占满空间，这个弹簧保证在侧边栏“折叠”时，按钮依然被压在最底下
+                Item {
+                    Layout.fillHeight: true
+                    visible: root.collapsed
+                }
+
+                // 2. 晚间复盘按钮
+                Button {
+                    id: finishDayBtn
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.bottomMargin: 8
+                    Layout.fillWidth: true
+                    height: 40
+
+                    // 自定义按钮背景
+                    background: Rectangle {
+                        color: finishDayBtn.hovered ? "#2D1F24" : "transparent"
+                        border.color: finishDayBtn.hovered ? "#4ADE80" : "#30384C"
+                        border.width: 1
+                        radius: 8
+                        Behavior on color { ColorAnimation { duration: 150 } }
+                    }
+
+                    // 自定义按钮内容（适配侧边栏折叠状态）
+                    contentItem: Item {
+                        anchors.fill: parent
+                        Row {
+                            anchors.centerIn: parent
+                            spacing: 8
+                            Text {
+                                text: "🌙"
+                                font.pixelSize: 16
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                            Text {
+                                visible: !root.collapsed // 侧边栏收起时隐藏文字
+                                text: "结束今日"
+                                color: "#E6EAF2"
+                                font.pixelSize: 14
+                                font.weight: Font.Medium
+                                anchors.verticalCenter: parent.verticalCenter
+                            }
+                        }
+                    }
+
+                    onClicked: {
+                        eveningReviewOverlay.visible = true
+                    }
+                }
     }
 }
