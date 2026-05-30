@@ -1,4 +1,4 @@
-#include "core/models/TimeBlock.h"
+#include "TimeBlock.h"
 
 QJsonObject TimeBlock::toJson() const
 {

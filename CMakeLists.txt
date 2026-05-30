@@ -10,6 +10,8 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTo
 
 qt_standard_project_setup(REQUIRES 6.6)
 
+qt_policy(SET QTP0004 NEW)
+
 qt_add_executable(Chrona
     src/main.cpp
     src/app/AppController.cpp
