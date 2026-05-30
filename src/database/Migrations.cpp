@@ -104,6 +104,21 @@ bool Migrations::run(QSqlDatabase db)
             )
         )SQL")) &&
         exec(db, QStringLiteral(R"SQL(
+            CREATE TABLE IF NOT EXISTS study_frames (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              name TEXT NOT NULL,
+              day_of_week INTEGER NOT NULL,
+              start_time TEXT NOT NULL,
+              end_time TEXT NOT NULL,
+              category_id INTEGER,
+              energy_level TEXT NOT NULL,
+              enabled INTEGER NOT NULL DEFAULT 1,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(category_id) REFERENCES categories(id)
+            )
+        )SQL")) &&
+        exec(db, QStringLiteral(R"SQL(
             CREATE TABLE IF NOT EXISTS app_settings (
               key TEXT PRIMARY KEY,
               value TEXT NOT NULL
@@ -111,7 +126,8 @@ bool Migrations::run(QSqlDatabase db)
         )SQL")) &&
         exec(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)")) &&
         exec(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_time_blocks_range ON time_blocks(start_time, end_time)")) &&
-        exec(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_events_range ON calendar_events(start_time, end_time)"));
+        exec(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_events_range ON calendar_events(start_time, end_time)")) &&
+        exec(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_study_frames_day ON study_frames(day_of_week, enabled)"));
 }
 
 bool Migrations::seed(QSqlDatabase db)
@@ -203,6 +219,40 @@ bool Migrations::seed(QSqlDatabase db)
         event.addBindValue(now);
         event.addBindValue(now);
         if (!event.exec()) {
+            return false;
+        }
+    }
+
+    QSqlQuery frame(db);
+    frame.prepare(QStringLiteral(R"SQL(
+        INSERT INTO study_frames(name, day_of_week, start_time, end_time, category_id, energy_level, enabled, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )SQL"));
+    struct SeedFrame {
+        QString name;
+        int dayOfWeek;
+        QString startTime;
+        QString endTime;
+        int category;
+        QString energyLevel;
+    };
+    const QVector<SeedFrame> frames = {
+        {QStringLiteral("Deep Study"), 1, QStringLiteral("19:00"), QStringLiteral("22:00"), 1, QStringLiteral("high")},
+        {QStringLiteral("Reading"), 2, QStringLiteral("08:00"), QStringLiteral("09:30"), 2, QStringLiteral("medium")},
+        {QStringLiteral("Deep Study"), 3, QStringLiteral("19:00"), QStringLiteral("22:00"), 1, QStringLiteral("high")},
+        {QStringLiteral("Deep Study"), 5, QStringLiteral("19:00"), QStringLiteral("22:00"), 1, QStringLiteral("high")}
+    };
+    for (const auto& item : frames) {
+        frame.addBindValue(item.name);
+        frame.addBindValue(item.dayOfWeek);
+        frame.addBindValue(item.startTime);
+        frame.addBindValue(item.endTime);
+        frame.addBindValue(item.category);
+        frame.addBindValue(item.energyLevel);
+        frame.addBindValue(1);
+        frame.addBindValue(now);
+        frame.addBindValue(now);
+        if (!frame.exec()) {
             return false;
         }
     }

@@ -8,6 +8,7 @@ public:
         const QList<Task>& tasks,
         const QList<CalendarEvent>& events,
         const QList<TimeBlock>& lockedBlocks,
+        const QList<StudyFrame>& studyFrames,
         const ScheduleWindow& window,
         const SchedulingConfig& config) const;
 

@@ -408,3 +408,113 @@ bool TimeBlockRepository::moveBlock(int blockId, const QDateTime& start, const Q
     query.addBindValue(blockId);
     return query.exec() && query.numRowsAffected() == 1;
 }
+
+StudyFrameRepository::StudyFrameRepository(QSqlDatabase db)
+    : m_db(std::move(db))
+{
+}
+
+QVector<StudyFrame> StudyFrameRepository::allFrames() const
+{
+    QVector<StudyFrame> frames;
+    QSqlQuery query(m_db);
+    query.exec(QStringLiteral(R"SQL(
+        SELECT f.id, f.name, f.day_of_week, f.start_time, f.end_time, f.category_id,
+               c.name, c.color, f.energy_level, f.enabled
+        FROM study_frames f
+        LEFT JOIN categories c ON c.id = f.category_id
+        ORDER BY f.day_of_week ASC, f.start_time ASC
+    )SQL"));
+    while (query.next()) {
+        StudyFrame frame;
+        frame.id = query.value(0).toInt();
+        frame.name = query.value(1).toString();
+        frame.dayOfWeek = query.value(2).toInt();
+        frame.startTime = QTime::fromString(query.value(3).toString(), QStringLiteral("HH:mm"));
+        frame.endTime = QTime::fromString(query.value(4).toString(), QStringLiteral("HH:mm"));
+        if (!query.value(5).isNull()) {
+            frame.categoryId = query.value(5).toInt();
+        }
+        frame.categoryName = query.value(6).toString();
+        frame.categoryColor = query.value(7).toString();
+        frame.energyLevel = query.value(8).toString();
+        frame.enabled = query.value(9).toBool();
+        frames.push_back(frame);
+    }
+    return frames;
+}
+
+QVector<StudyFrame> StudyFrameRepository::enabledFrames() const
+{
+    QVector<StudyFrame> frames = allFrames();
+    frames.erase(std::remove_if(frames.begin(), frames.end(), [](const StudyFrame& frame) {
+        return !frame.enabled;
+    }), frames.end());
+    return frames;
+}
+
+bool StudyFrameRepository::createFrame(const StudyFrame& frame, const QString& categoryName) const
+{
+    if (frame.name.trimmed().isEmpty() || frame.dayOfWeek < 1 || frame.dayOfWeek > 7 || !frame.startTime.isValid() || !frame.endTime.isValid() || frame.endTime <= frame.startTime) {
+        return false;
+    }
+
+    const int categoryId = ensureCategory(categoryName);
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(R"SQL(
+        INSERT INTO study_frames(name, day_of_week, start_time, end_time, category_id, energy_level, enabled, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )SQL"));
+    query.addBindValue(frame.name.trimmed());
+    query.addBindValue(frame.dayOfWeek);
+    query.addBindValue(frame.startTime.toString(QStringLiteral("HH:mm")));
+    query.addBindValue(frame.endTime.toString(QStringLiteral("HH:mm")));
+    query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(frame.energyLevel.trimmed().isEmpty() ? QStringLiteral("medium") : frame.energyLevel.trimmed());
+    query.addBindValue(frame.enabled ? 1 : 0);
+    query.addBindValue(toIso(QDateTime::currentDateTime()));
+    query.addBindValue(toIso(QDateTime::currentDateTime()));
+    return query.exec();
+}
+
+bool StudyFrameRepository::setEnabled(int frameId, bool enabled) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("UPDATE study_frames SET enabled = ?, updated_at = ? WHERE id = ?"));
+    query.addBindValue(enabled ? 1 : 0);
+    query.addBindValue(toIso(QDateTime::currentDateTime()));
+    query.addBindValue(frameId);
+    return query.exec() && query.numRowsAffected() == 1;
+}
+
+bool StudyFrameRepository::deleteFrame(int frameId) const
+{
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("DELETE FROM study_frames WHERE id = ?"));
+    query.addBindValue(frameId);
+    return query.exec() && query.numRowsAffected() == 1;
+}
+
+int StudyFrameRepository::ensureCategory(const QString& name) const
+{
+    const QString normalized = name.trimmed();
+    if (normalized.isEmpty()) {
+        return 0;
+    }
+
+    QSqlQuery select(m_db);
+    select.prepare(QStringLiteral("SELECT id FROM categories WHERE name = ?"));
+    select.addBindValue(normalized);
+    if (select.exec() && select.next()) {
+        return select.value(0).toInt();
+    }
+
+    QSqlQuery insert(m_db);
+    insert.prepare(QStringLiteral("INSERT INTO categories(name, color) VALUES(?, ?)"));
+    insert.addBindValue(normalized);
+    insert.addBindValue(QStringLiteral("#7C8CFF"));
+    if (!insert.exec()) {
+        return 0;
+    }
+    return insert.lastInsertId().toInt();
+}

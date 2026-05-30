@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/models/CalendarEvent.h"
+#include "core/models/StudyFrame.h"
 #include "core/models/Task.h"
 #include "core/models/TimeBlock.h"
 
@@ -54,5 +55,19 @@ public:
     bool moveBlock(int blockId, const QDateTime& start, const QDateTime& end) const;
 
 private:
+    QSqlDatabase m_db;
+};
+
+class StudyFrameRepository {
+public:
+    explicit StudyFrameRepository(QSqlDatabase db);
+    QVector<StudyFrame> allFrames() const;
+    QVector<StudyFrame> enabledFrames() const;
+    bool createFrame(const StudyFrame& frame, const QString& categoryName) const;
+    bool setEnabled(int frameId, bool enabled) const;
+    bool deleteFrame(int frameId) const;
+
+private:
+    int ensureCategory(const QString& name) const;
     QSqlDatabase m_db;
 };

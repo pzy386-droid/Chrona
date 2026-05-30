@@ -19,16 +19,18 @@ class ScheduleService : public QObject {
     Q_PROPERTY(QVariantMap focusItem READ focusItem NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap capacityStats READ capacityStats NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap selectedTask READ selectedTask NOTIFY selectedTaskChanged)
+    Q_PROPERTY(QVariantList studyFrames READ studyFrames NOTIFY dataChanged)
     Q_PROPERTY(int unscheduledCount READ unscheduledCount NOTIFY dataChanged)
 
 public:
-    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, AIService* aiService = nullptr, QObject* parent = nullptr);
+    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, AIService* aiService = nullptr, QObject* parent = nullptr);
 
     QObject* timelineModel();
     QObject* taskModel();
     QVariantMap focusItem() const;
     QVariantMap capacityStats() const;
     QVariantMap selectedTask() const;
+    QVariantList studyFrames() const;
     int unscheduledCount() const;
 
     Q_INVOKABLE void reschedule();
@@ -40,6 +42,9 @@ public:
     Q_INVOKABLE QVariantMap updateTask(int taskId, const QString& title, const QString& notes, const QString& deadlineText, int estimatedMinutes, int priority, const QString& categoryName, const QString& preferredStudyTime);
     Q_INVOKABLE QVariantMap deleteTask(int taskId);
     Q_INVOKABLE QVariantMap addFixedEvent(const QString& title, int dayOffset, int startMinute, int durationMinutes, bool locked, const QString& categoryName);
+    Q_INVOKABLE QVariantMap addStudyFrame(const QString& name, int dayIndex, const QString& startText, const QString& endText, const QString& categoryName, const QString& energyLevel);
+    Q_INVOKABLE bool setStudyFrameEnabled(int frameId, bool enabled);
+    Q_INVOKABLE bool deleteStudyFrame(int frameId);
     Q_INVOKABLE bool moveBlock(int blockId, int dayIndex, int startMinute, int durationMinutes);
     Q_INVOKABLE bool moveTimelineItem(int itemId, bool isEvent, int dayIndex, int startMinute, int durationMinutes);
     Q_INVOKABLE QVariantMap moveSelectedTaskBlock(int dayIndex, const QString& startText, const QString& endText);
@@ -59,10 +64,12 @@ private:
     void rebuildTimeline(const QVector<Task>& tasks, const QVector<CalendarEvent>& events, const QVector<TimeBlock>& blocks);
     void rebuildCapacityStats(const QVector<TimeBlock>& blocks);
     QVariantMap taskToMap(const Task& task) const;
+    QVariantMap studyFrameToMap(const StudyFrame& frame) const;
 
     TaskRepository m_tasks;
     CalendarRepository m_calendar;
     TimeBlockRepository m_blocks;
+    StudyFrameRepository m_studyFrames;
     TaskScheduler m_scheduler;
     ConflictResolver m_conflicts;
     NLPTaskParser m_parser;

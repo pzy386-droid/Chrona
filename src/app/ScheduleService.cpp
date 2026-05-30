@@ -68,11 +68,12 @@ QVariantMap parsedDraftToMap(const ParsedTaskDraft& draft, const QString& source
 }
 }
 
-ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, AIService* aiService, QObject* parent)
+ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, AIService* aiService, QObject* parent)
     : QObject(parent)
     , m_tasks(std::move(tasks))
     , m_calendar(std::move(calendar))
     , m_blocks(std::move(blocks))
+    , m_studyFrames(std::move(studyFrames))
     , m_aiService(aiService)
 {
 }
@@ -121,6 +122,15 @@ QVariantMap ScheduleService::selectedTask() const
     return map;
 }
 
+QVariantList ScheduleService::studyFrames() const
+{
+    QVariantList frames;
+    for (const auto& frame : m_studyFrames.allFrames()) {
+        frames.push_back(studyFrameToMap(frame));
+    }
+    return frames;
+}
+
 int ScheduleService::unscheduledCount() const
 {
     return m_unscheduledTaskIds.size();
@@ -131,9 +141,10 @@ void ScheduleService::reschedule()
     const ScheduleWindow window = currentWindow();
     const QVector<CalendarEvent> events = m_calendar.eventsBetween(window.start, window.end);
     const QVector<TimeBlock> locked = m_blocks.lockedBlocksBetween(window.start, window.end);
+    const QVector<StudyFrame> frames = m_studyFrames.enabledFrames();
     const QVector<Task> tasks = subtractLockedBlockCapacity(m_tasks.activeTasks(), locked);
 
-    const ScheduleResult result = m_scheduler.generateSchedule(tasks, events, locked, window, m_config);
+    const ScheduleResult result = m_scheduler.generateSchedule(tasks, events, locked, frames, window, m_config);
     const int runId = m_blocks.createScheduleRun(window, QStringLiteral("manual_or_startup"));
     m_blocks.replaceAutoBlocks(window, result.generatedBlocks, runId);
     m_unscheduledTaskIds = result.unscheduledTaskIds;
@@ -261,6 +272,49 @@ QVariantMap ScheduleService::addFixedEvent(const QString& title, int dayOffset, 
 
     reschedule();
     return {{"ok", true}, {"message", QObject::tr("固定时间已加入日程")}};
+}
+
+QVariantMap ScheduleService::addStudyFrame(const QString& name, int dayIndex, const QString& startText, const QString& endText, const QString& categoryName, const QString& energyLevel)
+{
+    const QTime start = QTime::fromString(startText.trimmed(), QStringLiteral("HH:mm"));
+    const QTime end = QTime::fromString(endText.trimmed(), QStringLiteral("HH:mm"));
+    if (name.trimmed().isEmpty() || dayIndex < 0 || dayIndex > 6 || !start.isValid() || !end.isValid() || end <= start) {
+        return {{"ok", false}, {"message", QObject::tr("Study Frame 时间或名称无效")}};
+    }
+
+    const ScheduleWindow window = currentWindow();
+    StudyFrame frame;
+    frame.name = name.trimmed();
+    frame.dayOfWeek = window.start.date().addDays(dayIndex).dayOfWeek();
+    frame.startTime = start;
+    frame.endTime = end;
+    frame.energyLevel = energyLevel.trimmed().isEmpty() ? QStringLiteral("medium") : energyLevel.trimmed();
+    frame.enabled = true;
+
+    if (!m_studyFrames.createFrame(frame, categoryName)) {
+        return {{"ok", false}, {"message", QObject::tr("Study Frame 创建失败")}};
+    }
+
+    reschedule();
+    return {{"ok", true}, {"message", QObject::tr("Study Frame 已保存并重新排程")}};
+}
+
+bool ScheduleService::setStudyFrameEnabled(int frameId, bool enabled)
+{
+    if (!m_studyFrames.setEnabled(frameId, enabled)) {
+        return false;
+    }
+    reschedule();
+    return true;
+}
+
+bool ScheduleService::deleteStudyFrame(int frameId)
+{
+    if (!m_studyFrames.deleteFrame(frameId)) {
+        return false;
+    }
+    reschedule();
+    return true;
 }
 
 bool ScheduleService::moveBlock(int blockId, int dayIndex, int startMinute, int durationMinutes)
@@ -628,5 +682,34 @@ QVariantMap ScheduleService::taskToMap(const Task& task) const
         {"categoryName", task.categoryName},
         {"preferredStudyTime", task.preferredStudyTime},
         {"categoryColor", colorForPriority(task.priority, task.categoryColor)}
+    };
+}
+
+QVariantMap ScheduleService::studyFrameToMap(const StudyFrame& frame) const
+{
+    const ScheduleWindow window = currentWindow();
+    int dayIndex = -1;
+    for (int i = 0; i < 7; ++i) {
+        if (window.start.date().addDays(i).dayOfWeek() == frame.dayOfWeek) {
+            dayIndex = i;
+            break;
+        }
+    }
+
+    const int startMinute = frame.startTime.hour() * 60 + frame.startTime.minute();
+    const int endMinute = frame.endTime.hour() * 60 + frame.endTime.minute();
+    return {
+        {"id", frame.id},
+        {"name", frame.name},
+        {"dayIndex", dayIndex},
+        {"dayOfWeek", frame.dayOfWeek},
+        {"startText", frame.startTime.toString(QStringLiteral("HH:mm"))},
+        {"endText", frame.endTime.toString(QStringLiteral("HH:mm"))},
+        {"startMinute", startMinute},
+        {"durationMinutes", qMax(0, endMinute - startMinute)},
+        {"categoryName", frame.categoryName},
+        {"energyLevel", frame.energyLevel},
+        {"enabled", frame.enabled},
+        {"color", frame.categoryColor.isEmpty() ? QStringLiteral("#7C8CFF") : frame.categoryColor}
     };
 }

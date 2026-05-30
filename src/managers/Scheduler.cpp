@@ -4,10 +4,11 @@ QList<TimeBlock> Scheduler::generateSchedule(
     const QList<Task>& tasks,
     const QList<CalendarEvent>& events,
     const QList<TimeBlock>& lockedBlocks,
+    const QList<StudyFrame>& studyFrames,
     const ScheduleWindow& window,
     const SchedulingConfig& config) const
 {
-    const ScheduleResult result = m_scheduler.generateSchedule(tasks, events, lockedBlocks, window, config);
+    const ScheduleResult result = m_scheduler.generateSchedule(tasks, events, lockedBlocks, studyFrames, window, config);
     return result.generatedBlocks;
 }
 

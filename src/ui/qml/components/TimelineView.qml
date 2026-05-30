@@ -7,6 +7,7 @@ Rectangle {
     id: root
     property string viewMode: "week"
     property var model
+    property var frameModel: []
     property real requestedDayColumnWidth: 190
     readonly property int dayStartMinute: 0
     readonly property int dayEndMinute: 24 * 60
@@ -153,6 +154,42 @@ Rectangle {
                     height: 2
                     color: "#7C8CFF"
                     opacity: 0.9
+                }
+
+                Repeater {
+                    model: root.frameModel
+
+                    delegate: Rectangle {
+                        visible: modelData.enabled && modelData.dayIndex >= 0 && (
+                            root.viewMode === "week"
+                                ? modelData.dayIndex < 7
+                                : modelData.dayIndex === 0
+                        )
+                        x: (root.viewMode === "week" ? modelData.dayIndex : 0) * root.dayColumnWidth + root.rulerWidth + 3
+                        y: (modelData.startMinute - root.dayStartMinute) * root.minuteHeight
+                        width: Math.max(120, root.dayColumnWidth - 6)
+                        height: Math.max(24, modelData.durationMinutes * root.minuteHeight)
+                        radius: 8
+                        color: modelData.color || "#7C8CFF"
+                        opacity: 0.12
+                        border.width: 1
+                        border.color: modelData.color || "#7C8CFF"
+
+                        Text {
+                            anchors.left: parent.left
+                            anchors.right: parent.right
+                            anchors.top: parent.top
+                            anchors.leftMargin: 8
+                            anchors.rightMargin: 8
+                            anchors.topMargin: 6
+                            text: (modelData.name || "Study Frame") + (modelData.categoryName ? " · " + modelData.categoryName : "")
+                            color: "#C6CFFF"
+                            opacity: 0.74
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                    }
                 }
 
                 Repeater {

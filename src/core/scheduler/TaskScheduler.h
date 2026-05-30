@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/models/CalendarEvent.h"
+#include "core/models/StudyFrame.h"
 #include "core/models/Task.h"
 #include "core/models/TimeBlock.h"
 #include "core/scheduler/CapacityAnalyzer.h"
@@ -18,6 +19,7 @@ public:
         const QVector<Task>& tasks,
         const QVector<CalendarEvent>& fixedEvents,
         const QVector<TimeBlock>& lockedBlocks,
+        const QVector<StudyFrame>& studyFrames,
         const ScheduleWindow& window,
         const SchedulingConfig& config) const;
 

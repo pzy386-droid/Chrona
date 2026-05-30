@@ -23,6 +23,7 @@ qt_add_executable(Chrona
     src/app/TaskListModel.cpp
     src/app/TaskListModel.h
     src/core/models/ScheduleTypes.h
+    src/core/models/StudyFrame.h
     src/core/models/Task.h
     src/core/models/CalendarEvent.h
     src/core/models/TimeBlock.cpp

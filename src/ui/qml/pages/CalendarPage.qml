@@ -174,6 +174,7 @@ Item {
             Layout.fillHeight: true
             viewMode: root.viewMode
             model: ScheduleService.timelineModel
+            frameModel: ScheduleService.studyFrames
             minuteHeight: root.timelineMinuteHeight
             requestedDayColumnWidth: root.timelineColumnWidth
         }

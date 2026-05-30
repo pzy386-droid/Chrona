@@ -8,6 +8,7 @@ Rectangle {
     property var task: ({})
     readonly property bool hasTask: task && task.id
     readonly property var preferredValues: ["morning", "afternoon", "evening"]
+    readonly property var energyValues: ["low", "medium", "high"]
 
     function syncFields() {
         if (!hasTask) {
@@ -60,6 +61,13 @@ Rectangle {
                 radius: 5
                 color: root.task.categoryColor || "#7C8CFF"
                 Behavior on color { ColorAnimation { duration: 180 } }
+            }
+
+            ActionButton {
+                Layout.preferredWidth: 86
+                text: "Frames"
+                muted: true
+                onClicked: studyFramePopup.open()
             }
         }
 
@@ -300,6 +308,226 @@ Rectangle {
         id: endWheel
         title: qsTr("选择终止时间")
         onAccepted: function(value) { endTimeField.text = value }
+    }
+
+    Popup {
+        id: studyFramePopup
+        width: 316
+        height: Math.min(620, root.height - 44)
+        modal: true
+        focus: true
+        anchors.centerIn: parent
+        padding: 0
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 8
+            color: "#161A23"
+            border.width: 1
+            border.color: "#30384C"
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 12
+
+            Text {
+                Layout.fillWidth: true
+                text: "Study Frames"
+                color: "#E6EAF2"
+                font.pixelSize: 18
+                font.weight: Font.DemiBold
+            }
+
+            TextField {
+                id: frameNameField
+                Layout.fillWidth: true
+                text: "Deep Study"
+                color: "#E6EAF2"
+                selectedTextColor: "white"
+                selectionColor: "#5968D8"
+                placeholderText: "Frame name"
+                placeholderTextColor: "#667187"
+                font.pixelSize: 13
+                background: FieldBackground {}
+            }
+
+            OptionPills {
+                id: frameDayPicker
+                Layout.fillWidth: true
+                options: ["Today", "Tomorrow", "+2", "+3", "+4", "+5", "+6"]
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+
+                TextField {
+                    id: frameStartField
+                    Layout.fillWidth: true
+                    text: "19:00"
+                    color: "#E6EAF2"
+                    selectedTextColor: "white"
+                    selectionColor: "#5968D8"
+                    font.pixelSize: 13
+                    background: FieldBackground {}
+                }
+
+                TextField {
+                    id: frameEndField
+                    Layout.fillWidth: true
+                    text: "22:00"
+                    color: "#E6EAF2"
+                    selectedTextColor: "white"
+                    selectionColor: "#5968D8"
+                    font.pixelSize: 13
+                    background: FieldBackground {}
+                }
+            }
+
+            TextField {
+                id: frameCategoryField
+                Layout.fillWidth: true
+                text: root.hasTask ? (root.task.categoryName || "") : ""
+                color: "#E6EAF2"
+                selectedTextColor: "white"
+                selectionColor: "#5968D8"
+                placeholderText: qsTr("瀛︿範 / 楂樻暟 / 鑻辫")
+                placeholderTextColor: "#667187"
+                font.pixelSize: 13
+                background: FieldBackground {}
+            }
+
+            OptionPills {
+                id: frameEnergyPicker
+                Layout.fillWidth: true
+                currentIndex: 1
+                options: ["Low", "Medium", "High"]
+            }
+
+            Text {
+                id: frameStatusText
+                Layout.fillWidth: true
+                text: ""
+                color: "#A9F0C9"
+                font.pixelSize: 12
+                elide: Text.ElideRight
+            }
+
+            ActionButton {
+                Layout.fillWidth: true
+                text: "Add Frame"
+                onClicked: {
+                    var result = ScheduleService.addStudyFrame(
+                        frameNameField.text,
+                        frameDayPicker.currentIndex,
+                        frameStartField.text,
+                        frameEndField.text,
+                        frameCategoryField.text,
+                        root.energyValues[frameEnergyPicker.currentIndex]
+                    )
+                    frameStatusText.color = result.ok ? "#A9F0C9" : "#FFB09B"
+                    frameStatusText.text = result.message || ""
+                }
+            }
+
+            ListView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                clip: true
+                spacing: 8
+                model: ScheduleService.studyFrames
+
+                delegate: Rectangle {
+                    width: ListView.view.width
+                    height: 74
+                    radius: 8
+                    color: "#11151D"
+                    border.width: 1
+                    border.color: modelData.enabled ? "#30384C" : "#252B35"
+                    opacity: modelData.enabled ? 1 : 0.58
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.margins: 10
+                        spacing: 10
+
+                        Rectangle {
+                            width: 5
+                            Layout.fillHeight: true
+                            radius: 3
+                            color: modelData.color || "#7C8CFF"
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.name || "Study Frame"
+                                color: "#E6EAF2"
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: (modelData.startText || "") + " - " + (modelData.endText || "") + (modelData.categoryName ? " · " + modelData.categoryName : "")
+                                color: "#8C96AA"
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
+
+                        Rectangle {
+                            width: 34
+                            height: 26
+                            radius: 7
+                            color: enableMouse.containsMouse ? "#252D44" : "#1A2030"
+                            border.width: 1
+                            border.color: modelData.enabled ? "#7C8CFF" : "#3A4254"
+                            Text {
+                                anchors.centerIn: parent
+                                text: modelData.enabled ? "On" : "Off"
+                                color: modelData.enabled ? "#C6CFFF" : "#8C96AA"
+                                font.pixelSize: 10
+                                font.weight: Font.DemiBold
+                            }
+                            MouseArea {
+                                id: enableMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: ScheduleService.setStudyFrameEnabled(modelData.id, !modelData.enabled)
+                            }
+                        }
+
+                        Rectangle {
+                            width: 26
+                            height: 26
+                            radius: 7
+                            color: deleteMouse.containsMouse ? "#3A211E" : "#1A2030"
+                            border.width: 1
+                            border.color: "#53332F"
+                            Text {
+                                anchors.centerIn: parent
+                                text: "X"
+                                color: "#FFB09B"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
+                            MouseArea {
+                                id: deleteMouse
+                                anchors.fill: parent
+                                hoverEnabled: true
+                                onClicked: ScheduleService.deleteStudyFrame(modelData.id)
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 
     component FieldLabel: Text {
