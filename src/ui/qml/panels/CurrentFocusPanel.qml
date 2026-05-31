@@ -10,7 +10,7 @@ Rectangle {
     property var scheduleIssues: []
     property bool active: false
     signal focusStarted()
-    signal focusStopped()
+    signal focusStopRequested()
 
     height: 104
     radius: 8
@@ -106,11 +106,7 @@ Rectangle {
                 enabled: root.focusItem && root.focusItem.taskId > 0
                 onClicked: {
                     if (root.active) {
-                        var stopResult = ScheduleService.stopFocus()
-                        root.active = !(stopResult && stopResult.ok)
-                        if (!root.active) {
-                            root.focusStopped()
-                        }
+                        root.focusStopRequested()
                     } else {
                         var result = ScheduleService.startFocus()
                         root.active = result && result.ok
