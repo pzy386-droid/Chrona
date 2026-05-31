@@ -174,10 +174,12 @@ void ScheduleService::reschedule()
     m_scheduleIssues.clear();
     for (const auto& issue : result.issues) {
         const QVariantMap issueMap = {
-            {QStringLiteral("taskId"), issue.taskId},
-            {QStringLiteral("title"), issue.title},
-            {QStringLiteral("reason"), issue.reason},
-            {QStringLiteral("remainingMinutes"), issue.remainingMinutes}
+            {"taskId", issue.taskId},
+            {"title", issue.title},
+            {"code", issue.code},
+            {"reason", issue.reason},
+            {"fixHint", issue.fixHint},
+            {"remainingMinutes", issue.remainingMinutes}
         };
         m_scheduleIssues.push_back(issueMap);
     }
