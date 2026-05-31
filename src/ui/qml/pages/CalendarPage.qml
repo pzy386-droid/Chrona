@@ -22,6 +22,7 @@ Item {
     }
 
     function endFocus(completeTask) {
+        focusExitConfirmPopup.close()
         if (completeTask && ScheduleService.focusItem.taskId > 0) {
             ScheduleService.completeTask(ScheduleService.focusItem.taskId)
         } else {
@@ -30,6 +31,12 @@ Item {
         root.focusActive = false
         focusPanel.active = false
         focusTimer.stop()
+    }
+
+    function requestEndFocus() {
+        if (root.focusActive) {
+            focusExitConfirmPopup.open()
+        }
     }
 
     function submitAiDraft() {
@@ -73,55 +80,141 @@ Item {
         anchors.bottomMargin: 18
         spacing: 18
 
-        RowLayout {
+        Rectangle {
             Layout.fillWidth: true
-            spacing: 16
+            Layout.preferredHeight: 120
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 4
+            radius: 18
 
-                Text {
-                    text: qsTr("学习日程")
-                    color: "#E6EAF2"
-                    font.pixelSize: 28
-                    font.weight: Font.DemiBold
+            color: "#161B22"
+
+            border.width: 1
+            border.color: "#2A3140"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Text {
+                        text: "👋 欢迎回来"
+                        color: "#FFFFFF"
+                        font.pixelSize: 24
+                        font.bold: true
+                    }
+
+                    Text {
+                        text: "Chrona 已为今天生成学习计划"
+                        color: "#9AA4B2"
+                        font.pixelSize: 13
+                    }
+
+                    Text {
+                        text: Qt.formatDate(new Date(), "yyyy-MM-dd")
+                        color: "#677184"
+                        font.pixelSize: 11
+                    }
                 }
 
-                Text {
-                    text: qsTr("AI 解析任务意图，Scheduler 自动安排学习时间块")
-                    color: "#9AA4B2"
-                    font.pixelSize: 13
+                Rectangle {
+                    width: 100
+                    height: 72
+                    radius: 12
+
+                    color: "#202638"
+
+                    Column {
+                        anchors.centerIn: parent
+
+                        Text {
+                            text: ScheduleService.taskModel.count
+                            color: "white"
+                            font.pixelSize: 24
+                            font.bold: true
+                        }
+
+                        Text {
+                            text: "任务"
+                            color: "#9AA4B2"
+                            font.pixelSize: 11
+                        }
+                    }
                 }
-            }
 
-            DensityControl {
-                label: qsTr("行距")
-                value: root.timelineMinuteHeight
-                from: 0.85
-                to: 1.75
-                onValueChangedByUser: function(v) { root.timelineMinuteHeight = v }
-                valueLabel: root.timelineMinuteHeight < 1.08 ? qsTr("紧") : root.timelineMinuteHeight > 1.42 ? qsTr("松") : qsTr("中")
-            }
+                Rectangle {
+                    width: 100
+                    height: 72
+                    radius: 12
 
-            DensityControl {
-                label: qsTr("列距")
-                value: root.timelineColumnWidth
-                from: 140
-                to: 260
-                onValueChangedByUser: function(v) { root.timelineColumnWidth = v }
-                valueLabel: root.timelineColumnWidth < 170 ? qsTr("紧") : root.timelineColumnWidth > 225 ? qsTr("松") : qsTr("中")
-            }
+                    color: "#202638"
 
-            SegmentedControl {
-                options: [qsTr("日"), qsTr("周")]
-                selectedIndex: root.viewMode === "day" ? 0 : 1
-                onSelectedIndexChanged: root.viewMode = selectedIndex === 0 ? "day" : "week"
-            }
+                    Column {
+                        anchors.centerIn: parent
 
-            LanguageToggle {
-                currentLocale: LocaleService.locale
-                onLocaleRequested: function(locale) { LocaleService.setLocale(locale) }
+                        Text {
+                            text: ScheduleService.unscheduledCount
+                            color: "#FFB547"
+                            font.pixelSize: 24
+                            font.bold: true
+                        }
+
+                        Text {
+                            text: "待规划"
+                            color: "#9AA4B2"
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+
+                DensityControl {
+                    label: qsTr("行距")
+                    value: root.timelineMinuteHeight
+                    from: 0.85
+                    to: 1.75
+                    onValueChangedByUser: function(v) {
+                        root.timelineMinuteHeight = v
+                    }
+                    valueLabel: root.timelineMinuteHeight < 1.08
+                                ? qsTr("紧")
+                                : root.timelineMinuteHeight > 1.42
+                                  ? qsTr("松")
+                                  : qsTr("中")
+                }
+
+                DensityControl {
+                    label: qsTr("列距")
+                    value: root.timelineColumnWidth
+                    from: 140
+                    to: 260
+                    onValueChangedByUser: function(v) {
+                        root.timelineColumnWidth = v
+                    }
+                    valueLabel: root.timelineColumnWidth < 170
+                                ? qsTr("紧")
+                                : root.timelineColumnWidth > 225
+                                  ? qsTr("松")
+                                  : qsTr("中")
+                }
+
+                SegmentedControl {
+                    options: [qsTr("日"), qsTr("周")]
+                    selectedIndex: root.viewMode === "day" ? 0 : 1
+                    onSelectedIndexChanged: {
+                        root.viewMode = selectedIndex === 0
+                                        ? "day"
+                                        : "week"
+                    }
+                }
+
+                LanguageToggle {
+                    currentLocale: LocaleService.locale
+                    onLocaleRequested: function(locale) {
+                        LocaleService.setLocale(locale)
+                    }
+                }
             }
         }
 
@@ -136,7 +229,7 @@ Item {
                 root.focusActive = true
                 focusTimer.restart()
             }
-            onFocusStopped: root.endFocus(false)
+            onFocusStopRequested: root.requestEndFocus()
         }
 
         Rectangle {
@@ -230,6 +323,51 @@ Item {
             }
         }
 
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 88
+
+            radius: 14
+
+            color: "#1A1F2B"
+
+            border.width: 1
+            border.color: "#6C63FF"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+
+                Text {
+                    text: "🤖"
+                    font.pixelSize: 28
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: "AI 推荐"
+                        color: "#FFFFFF"
+                        font.bold: true
+                    }
+
+                    Text {
+                        text: "14:00 - 15:30 适合高认知学习"
+                        color: "#A6B0C3"
+                        font.pixelSize: 12
+                    }
+                }
+
+                Text {
+                    text: "+18%"
+                    color: "#4ADE80"
+                    font.pixelSize: 24
+                    font.bold: true
+                }
+            }
+        }
+
         QuickAddBar {
             Layout.fillWidth: true
             capacityStats: ScheduleService.capacityStats
@@ -271,121 +409,180 @@ Item {
         }
     }
 
-    Item {
+    FocusScope {
         id: focusLayer
-        visible: root.focusActive
+        parent: Overlay.overlay
         anchors.fill: parent
-        z: 20
+        visible: root.focusActive
+        z: 500
+        focus: root.focusActive
         opacity: root.focusActive ? 1 : 0
 
         Behavior on opacity { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
 
+        onVisibleChanged: if (visible) forceActiveFocus()
+
+        Keys.onEscapePressed: root.requestEndFocus()
+
         Rectangle {
             anchors.fill: parent
             color: "#080A0F"
-            opacity: 0.76
         }
 
-        Rectangle {
-            id: halo
-            anchors.centerIn: focusCard
-            width: focusCard.width + 58
-            height: focusCard.height + 58
-            radius: 18
-            color: "transparent"
-            border.width: 1
-            border.color: "#7C8CFF"
-            opacity: 0.18
+        Item {
+            id: breathAnchor
+            anchors.centerIn: parent
+            width: Math.min(520, parent.width * 0.55)
+            height: width
 
-            SequentialAnimation on scale {
-                running: root.focusActive
-                loops: Animation.Infinite
-                NumberAnimation { to: 1.035; duration: 1800; easing.type: Easing.InOutSine }
-                NumberAnimation { to: 1.0; duration: 1800; easing.type: Easing.InOutSine }
+            Rectangle {
+                id: breathInner
+                anchors.centerIn: parent
+                width: parent.width * 0.72
+                height: parent.width * 0.72
+                radius: height * 0.5
+                color: "#FFFFFF"
+                opacity: 0.06
+                transformOrigin: Item.Center
+
+                SequentialAnimation {
+                    running: root.focusActive
+                    loops: Animation.Infinite
+                    NumberAnimation { target: breathInner; property: "opacity"; to: 0.18; duration: 3200; easing.type: Easing.InOutSine }
+                    NumberAnimation { target: breathInner; property: "opacity"; to: 0.04; duration: 3200; easing.type: Easing.InOutSine }
+                }
+
+                SequentialAnimation on scale {
+                    running: root.focusActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 1.05; duration: 3200; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.96; duration: 3200; easing.type: Easing.InOutSine }
+                }
             }
         }
 
-        Rectangle {
-            id: focusCard
-            width: Math.min(548, root.width - 64)
-            height: 270
-            radius: 12
-            color: "#161A23"
-            border.width: 1
-            border.color: "#30384C"
+        ColumnLayout {
+            id: focusContent
+            z: 1
             anchors.centerIn: parent
-            scale: root.focusActive ? 1 : 0.96
+            width: Math.min(640, parent.width - 80)
+            spacing: 28
 
-            Behavior on scale { NumberAnimation { duration: 320; easing.type: Easing.OutBack } }
+            Text {
+                Layout.alignment: Qt.AlignHCenter
+                text: qsTr("沉浸专注")
+                color: "#687389"
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+                font.letterSpacing: 2
+            }
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 24
-                spacing: 13
+            Text {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
+                horizontalAlignment: Text.AlignHCenter
+                text: ScheduleService.focusItem.title || qsTr("当前任务")
+                color: "#E6EAF2"
+                font.pixelSize: 34
+                font.weight: Font.DemiBold
+                wrapMode: Text.WordWrap
+                maximumLineCount: 2
+                elide: Text.ElideRight
+            }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    Text {
-                        text: qsTr("沉浸专注")
-                        color: "#9AA4B2"
-                        font.pixelSize: 12
-                        font.weight: Font.DemiBold
-                    }
-                    Item { Layout.fillWidth: true }
-                    Text {
-                        text: qsTr("25 分钟")
-                        color: "#687389"
-                        font.pixelSize: 12
-                    }
-                }
+            Text {
+                id: focusTimerText
+                Layout.alignment: Qt.AlignHCenter
+                text: root.formatFocusTime(root.focusRemainingSeconds)
+                color: "#FFFFFF"
+                font.pixelSize: 120
+                font.weight: Font.Light
+                font.family: "Consolas"
+                font.letterSpacing: 2
+            }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: ScheduleService.focusItem.title || qsTr("当前任务")
-                    color: "#E6EAF2"
-                    font.pixelSize: 26
-                    font.weight: Font.DemiBold
-                    elide: Text.ElideRight
-                }
-
-                Text {
-                    text: root.formatFocusTime(root.focusRemainingSeconds)
-                    color: "#7C8CFF"
-                    font.pixelSize: 56
-                    font.weight: Font.Bold
-                    font.family: "Consolas"
-                }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 4
+                radius: 2
+                color: "#2A2A2A"
+                clip: true
 
                 Rectangle {
-                    Layout.fillWidth: true
-                    Layout.preferredHeight: 8
-                    radius: 4
-                    color: "#252B3A"
-                    clip: true
-                    Rectangle {
-                        height: parent.height
-                        width: parent.width * (1 - root.focusRemainingSeconds / root.focusDurationSeconds)
-                        radius: 4
-                        color: "#7C8CFF"
-                        Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
-                    }
+                    height: parent.height
+                    width: parent.width * (1 - root.focusRemainingSeconds / root.focusDurationSeconds)
+                    radius: 2
+                    color: "#FFFFFF"
+                    opacity: 0.9
+                    Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
                 }
+            }
 
-                Text {
-                    Layout.fillWidth: true
-                    text: qsTr("保持当前节奏，完成这一段时间块。")
-                    color: "#9AA4B2"
-                    font.pixelSize: 13
-                    elide: Text.ElideRight
-                }
+            Text {
+                Layout.fillWidth: true
+                Layout.alignment: Qt.AlignHCenter
+                horizontalAlignment: Text.AlignHCenter
+                text: qsTr("保持当前节奏，完成这一段时间块。")
+                color: "#9AA4B2"
+                font.pixelSize: 14
+            }
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: 10
-                    Item { Layout.fillWidth: true }
-                    FocusButton { text: qsTr("取消"); muted: true; onClicked: root.endFocus(false) }
-                    FocusButton { text: qsTr("完成"); onClicked: root.endFocus(true) }
-                }
+            RowLayout {
+                Layout.alignment: Qt.AlignHCenter
+                spacing: 12
+
+                FocusButton { text: qsTr("退出专注"); muted: true; onClicked: root.requestEndFocus() }
+                FocusButton { text: qsTr("完成"); onClicked: root.endFocus(true) }
+            }
+        }
+    }
+
+    Popup {
+        id: focusExitConfirmPopup
+        parent: Overlay.overlay
+        anchors.centerIn: parent
+        width: Math.min(420, parent ? parent.width - 48 : 420)
+        height: 208
+        modal: true
+        focus: true
+        padding: 0
+        z: 600
+        closePolicy: Popup.CloseOnEscape
+        background: PopupBackground {}
+
+        onClosed: if (root.focusActive && focusLayer.visible) focusLayer.forceActiveFocus()
+
+        ColumnLayout {
+            id: exitConfirmLayout
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: 24
+            spacing: 16
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("退出专注？")
+                color: "#E6EAF2"
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("当前专注尚未完成，确定要退出吗？进度将不会保存。")
+                color: "#9AA4B2"
+                font.pixelSize: 14
+                wrapMode: Text.WordWrap
+                lineHeight: 1.35
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 10
+                Item { Layout.fillWidth: true }
+                FocusButton { text: qsTr("继续专注"); onClicked: focusExitConfirmPopup.close() }
+                FocusButton { text: qsTr("退出"); muted: true; onClicked: root.endFocus(false) }
             }
         }
     }

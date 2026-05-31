@@ -128,6 +128,8 @@ QVariantMap ScheduleService::selectedTask() const
         map.insert(QStringLiteral("blockEndText"), block->end.time().toString(QStringLiteral("HH:mm")));
         map.insert(QStringLiteral("blockTimeRange"), focusSubtitle(*block));
         map.insert(QStringLiteral("isLocked"), block->locked);
+        map.insert(QStringLiteral("blockOrdinal"), block->blockOrdinal);
+        map.insert(QStringLiteral("blockTotal"), block->blockTotal);
     }
     return map;
 }
@@ -183,10 +185,12 @@ void ScheduleService::reschedule()
     m_scheduleIssues.clear();
     for (const auto& issue : result.issues) {
         const QVariantMap issueMap = {
-            {QStringLiteral("taskId"), issue.taskId},
-            {QStringLiteral("title"), issue.title},
-            {QStringLiteral("reason"), issue.reason},
-            {QStringLiteral("remainingMinutes"), issue.remainingMinutes}
+            {"taskId", issue.taskId},
+            {"title", issue.title},
+            {"code", issue.code},
+            {"reason", issue.reason},
+            {"fixHint", issue.fixHint},
+            {"remainingMinutes", issue.remainingMinutes}
         };
         m_scheduleIssues.push_back(issueMap);
     }
@@ -760,8 +764,25 @@ void ScheduleService::rebuildTimeline(const QVector<Task>& tasks, const QVector<
 {
     const ScheduleWindow window = currentWindow();
     QHash<int, Task> taskById;
+    QHash<int, int> blockTotalsByTask;
+    QHash<int, int> blockOrdinalsById;
     for (const auto& task : tasks) {
         taskById.insert(task.id, task);
+    }
+    QVector<TimeBlock> orderedBlocks = blocks;
+    std::sort(orderedBlocks.begin(), orderedBlocks.end(), [](const TimeBlock& a, const TimeBlock& b) {
+        if (a.taskId == b.taskId) {
+            return a.start < b.start;
+        }
+        return a.taskId < b.taskId;
+    });
+    for (const auto& block : orderedBlocks) {
+        if (block.taskId <= 0 || !taskById.contains(block.taskId)) {
+            continue;
+        }
+        const int ordinal = blockTotalsByTask.value(block.taskId, 0) + 1;
+        blockTotalsByTask.insert(block.taskId, ordinal);
+        blockOrdinalsById.insert(block.id, ordinal);
     }
 
     QVector<TimelineItem> items;
@@ -801,6 +822,8 @@ void ScheduleService::rebuildTimeline(const QVector<Task>& tasks, const QVector<
         item.color = colorForPriority(task.priority, task.categoryColor);
         item.event = false;
         item.locked = block.source == BlockSource::Locked;
+        item.blockOrdinal = blockOrdinalsById.value(block.id, 1);
+        item.blockTotal = blockTotalsByTask.value(block.taskId, 1);
         items.push_back(item);
     }
 
@@ -902,6 +925,8 @@ QVariantMap ScheduleService::eventToDetailMap(const TimelineItem& item) const
         {"blockStartText", item.start.time().toString(QStringLiteral("HH:mm"))},
         {"blockEndText", item.end.time().toString(QStringLiteral("HH:mm"))},
         {"blockTimeRange", focusSubtitle(item)},
-        {"isLocked", item.eventLocked}
+        {"isLocked", item.eventLocked},
+        {"blockOrdinal", 1},
+        {"blockTotal", 1}
     };
 }

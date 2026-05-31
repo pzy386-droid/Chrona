@@ -196,6 +196,7 @@ Rectangle {
                     model: root.model
 
                     delegate: TimeBlock {
+                        id: blockDelegate
                         visible: root.viewMode === "week"
                             ? model.dayIndex >= 0 && model.dayIndex < 7
                             : model.dayIndex === 0
@@ -213,6 +214,8 @@ Rectangle {
                         locked: model.isLocked
                         eventLocked: model.isEventLocked
                         selected: model.selected
+                        blockOrdinal: model.blockOrdinal
+                        blockTotal: model.blockTotal
                         dayWidth: root.dayColumnWidth
                         minuteHeight: root.minuteHeight
                         timelineLeft: root.rulerWidth
@@ -223,7 +226,7 @@ Rectangle {
                         x: (root.viewMode === "week" ? model.dayIndex : 0) * root.dayColumnWidth + root.rulerWidth + 5
                         y: (model.startMinute - root.dayStartMinute) * root.minuteHeight
                         width: Math.max(120, root.dayColumnWidth - 10)
-                        height: Math.max(30, model.durationMinutes * root.minuteHeight - 4)
+                        height: Math.max(30, (blockDelegate.resizeActive ? blockDelegate.resizePreviewDuration : model.durationMinutes) * root.minuteHeight - 4)
                         onMoveRequested: function(blockId, dayIndex, startMinute, durationMinutes) {
                             var ok = ScheduleService.moveTimelineItem(blockId, model.isEvent, dayIndex, startMinute, durationMinutes)
                             if (!ok) {

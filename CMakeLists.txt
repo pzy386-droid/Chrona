@@ -77,6 +77,8 @@ qt_add_qml_module(Chrona
         src/ui/qml/components/TimeBlock.qml
         src/ui/qml/components/TimeWheelPicker.qml
         src/ui/qml/components/TimelineView.qml
+        src/ui/qml/panels/DailyPlanOverlay.qml
+        src/ui/qml/panels/EveningReviewOverlay.qml
 )
 
 qt_add_translations(Chrona

@@ -52,6 +52,10 @@ QVariant TimelineModel::data(const QModelIndex& index, int role) const
         return item.eventLocked;
     case SelectedRole:
         return item.id == m_selectedItemId || (m_selectedItemId == 0 && item.taskId != 0 && item.taskId == m_selectedTaskId);
+    case BlockOrdinalRole:
+        return item.blockOrdinal;
+    case BlockTotalRole:
+        return item.blockTotal;
     default:
         return {};
     }
@@ -75,7 +79,9 @@ QHash<int, QByteArray> TimelineModel::roleNames() const
         {IsEventRole, "isEvent"},
         {IsLockedRole, "isLocked"},
         {IsEventLockedRole, "isEventLocked"},
-        {SelectedRole, "selected"}
+        {SelectedRole, "selected"},
+        {BlockOrdinalRole, "blockOrdinal"},
+        {BlockTotalRole, "blockTotal"}
     };
 }
 
