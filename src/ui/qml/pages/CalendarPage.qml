@@ -80,55 +80,141 @@ Item {
         anchors.bottomMargin: 18
         spacing: 18
 
-        RowLayout {
+        Rectangle {
             Layout.fillWidth: true
-            spacing: 16
+            Layout.preferredHeight: 120
 
-            ColumnLayout {
-                Layout.fillWidth: true
-                spacing: 4
+            radius: 18
 
-                Text {
-                    text: qsTr("学习日程")
-                    color: "#E6EAF2"
-                    font.pixelSize: 28
-                    font.weight: Font.DemiBold
+            color: "#161B22"
+
+            border.width: 1
+            border.color: "#2A3140"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 20
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
+
+                    Text {
+                        text: "👋 欢迎回来"
+                        color: "#FFFFFF"
+                        font.pixelSize: 24
+                        font.bold: true
+                    }
+
+                    Text {
+                        text: "Chrona 已为今天生成学习计划"
+                        color: "#9AA4B2"
+                        font.pixelSize: 13
+                    }
+
+                    Text {
+                        text: Qt.formatDate(new Date(), "yyyy-MM-dd")
+                        color: "#677184"
+                        font.pixelSize: 11
+                    }
                 }
 
-                Text {
-                    text: qsTr("AI 解析任务意图，Scheduler 自动安排学习时间块")
-                    color: "#9AA4B2"
-                    font.pixelSize: 13
+                Rectangle {
+                    width: 100
+                    height: 72
+                    radius: 12
+
+                    color: "#202638"
+
+                    Column {
+                        anchors.centerIn: parent
+
+                        Text {
+                            text: ScheduleService.taskModel.count
+                            color: "white"
+                            font.pixelSize: 24
+                            font.bold: true
+                        }
+
+                        Text {
+                            text: "任务"
+                            color: "#9AA4B2"
+                            font.pixelSize: 11
+                        }
+                    }
                 }
-            }
 
-            DensityControl {
-                label: qsTr("行距")
-                value: root.timelineMinuteHeight
-                from: 0.85
-                to: 1.75
-                onValueChangedByUser: function(v) { root.timelineMinuteHeight = v }
-                valueLabel: root.timelineMinuteHeight < 1.08 ? qsTr("紧") : root.timelineMinuteHeight > 1.42 ? qsTr("松") : qsTr("中")
-            }
+                Rectangle {
+                    width: 100
+                    height: 72
+                    radius: 12
 
-            DensityControl {
-                label: qsTr("列距")
-                value: root.timelineColumnWidth
-                from: 140
-                to: 260
-                onValueChangedByUser: function(v) { root.timelineColumnWidth = v }
-                valueLabel: root.timelineColumnWidth < 170 ? qsTr("紧") : root.timelineColumnWidth > 225 ? qsTr("松") : qsTr("中")
-            }
+                    color: "#202638"
 
-            SegmentedControl {
-                options: [qsTr("日"), qsTr("周")]
-                selectedIndex: root.viewMode === "day" ? 0 : 1
-                onSelectedIndexChanged: root.viewMode = selectedIndex === 0 ? "day" : "week"
-            }
+                    Column {
+                        anchors.centerIn: parent
 
-            LanguageToggle {
-                currentLocale: LocaleService.locale
-                onLocaleRequested: function(locale) { LocaleService.setLocale(locale) }
+                        Text {
+                            text: ScheduleService.unscheduledCount
+                            color: "#FFB547"
+                            font.pixelSize: 24
+                            font.bold: true
+                        }
+
+                        Text {
+                            text: "待规划"
+                            color: "#9AA4B2"
+                            font.pixelSize: 11
+                        }
+                    }
+                }
+
+                DensityControl {
+                    label: qsTr("行距")
+                    value: root.timelineMinuteHeight
+                    from: 0.85
+                    to: 1.75
+                    onValueChangedByUser: function(v) {
+                        root.timelineMinuteHeight = v
+                    }
+                    valueLabel: root.timelineMinuteHeight < 1.08
+                                ? qsTr("紧")
+                                : root.timelineMinuteHeight > 1.42
+                                  ? qsTr("松")
+                                  : qsTr("中")
+                }
+
+                DensityControl {
+                    label: qsTr("列距")
+                    value: root.timelineColumnWidth
+                    from: 140
+                    to: 260
+                    onValueChangedByUser: function(v) {
+                        root.timelineColumnWidth = v
+                    }
+                    valueLabel: root.timelineColumnWidth < 170
+                                ? qsTr("紧")
+                                : root.timelineColumnWidth > 225
+                                  ? qsTr("松")
+                                  : qsTr("中")
+                }
+
+                SegmentedControl {
+                    options: [qsTr("日"), qsTr("周")]
+                    selectedIndex: root.viewMode === "day" ? 0 : 1
+                    onSelectedIndexChanged: {
+                        root.viewMode = selectedIndex === 0
+                                        ? "day"
+                                        : "week"
+                    }
+                }
+
+                LanguageToggle {
+                    currentLocale: LocaleService.locale
+                    onLocaleRequested: function(locale) {
+                        LocaleService.setLocale(locale)
+                    }
+                }
             }
         }
 
@@ -233,6 +319,51 @@ Item {
                             quickAddToast.open()
                         }
                     }
+                }
+            }
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: 88
+
+            radius: 14
+
+            color: "#1A1F2B"
+
+            border.width: 1
+            border.color: "#6C63FF"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 16
+
+                Text {
+                    text: "🤖"
+                    font.pixelSize: 28
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+
+                    Text {
+                        text: "AI 推荐"
+                        color: "#FFFFFF"
+                        font.bold: true
+                    }
+
+                    Text {
+                        text: "14:00 - 15:30 适合高认知学习"
+                        color: "#A6B0C3"
+                        font.pixelSize: 12
+                    }
+                }
+
+                Text {
+                    text: "+18%"
+                    color: "#4ADE80"
+                    font.pixelSize: 24
+                    font.bold: true
                 }
             }
         }
@@ -363,7 +494,7 @@ Item {
                 Layout.alignment: Qt.AlignHCenter
                 text: root.formatFocusTime(root.focusRemainingSeconds)
                 color: "#FFFFFF"
-                font.pixelSize: 96
+                font.pixelSize: 120
                 font.weight: Font.Light
                 font.family: "Consolas"
                 font.letterSpacing: 2
