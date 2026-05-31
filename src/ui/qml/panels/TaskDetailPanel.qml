@@ -236,7 +236,24 @@ Rectangle {
                     background: FieldBackground {}
                 }
 
-                FieldLabel { text: qsTr("当前时间块") }
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 8
+
+                    FieldLabel {
+                        Layout.fillWidth: true
+                        text: qsTr("当前时间块")
+                    }
+
+                    Text {
+                        visible: !root.isEvent && (root.task.blockTotal || 0) > 1
+                        text: qsTr("第 %1 / %2 块").arg(root.task.blockOrdinal || 1).arg(root.task.blockTotal || 1)
+                        color: "#7C8CFF"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+                }
+
                 OptionPills {
                     id: dayPicker
                     Layout.fillWidth: true

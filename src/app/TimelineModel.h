@@ -19,6 +19,8 @@ struct TimelineItem {
     bool locked = false;
     bool eventLocked = false;
     bool selected = false;
+    int blockOrdinal = 0;
+    int blockTotal = 0;
 };
 
 class TimelineModel : public QAbstractListModel {
@@ -41,7 +43,9 @@ public:
         IsEventRole,
         IsLockedRole,
         IsEventLockedRole,
-        SelectedRole
+        SelectedRole,
+        BlockOrdinalRole,
+        BlockTotalRole
     };
 
     explicit TimelineModel(QObject* parent = nullptr);
