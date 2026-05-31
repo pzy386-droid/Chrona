@@ -14,7 +14,11 @@ struct ScheduleResult {
     struct Issue {
         int taskId = 0;
         QString title;
+
+        QString code;
         QString reason;
+        QString fixHint;
+
         int remainingMinutes = 0;
     };
     QVector<Issue> issues;
