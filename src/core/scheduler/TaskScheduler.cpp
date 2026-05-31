@@ -140,7 +140,11 @@ ScheduleResult TaskScheduler::generateSchedule(
             result.issues.push_back({
                 item.task.id,
                 item.task.title,
-                placedAny ? QObject::tr("可用时间不足，任务只完成了部分排程") : QObject::tr("截止时间前没有足够的可用时间"),
+                "insufficient_capacity",
+                placedAny ? QObject::tr("可用时间不足，任务只完成了部分排程")
+                          : QObject::tr("截止时间前没有足够的可用时间"),
+                placedAny ? QObject::tr("减少任务时长或延长截止时间")
+                          : QObject::tr("尝试延长截止时间"),
                 remaining
             });
         } else {
