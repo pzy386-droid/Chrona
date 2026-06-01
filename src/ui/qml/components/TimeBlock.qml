@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import Qt5Compat.GraphicalEffects
 import Chrona
 
 Rectangle {
@@ -25,6 +24,7 @@ Rectangle {
     property bool selected: false
     property int blockOrdinal: 0
     property int blockTotal: 0
+    property int spanDays: 1
     property real dayWidth: 120
     property real minuteHeight: 1
     property real timelineLeft: 0
@@ -49,9 +49,9 @@ Rectangle {
     signal selectedItem(int taskId, int blockId)
 
     radius: 14
-    color: event ? "#262D3A" : selected ? Qt.darker(accentColor, 1.35) : "#1A1F2B"
+    color: selected ? Qt.darker(accentColor, 1.35) : "#1A1F2B"
     border.width: selected ? 2 : mouse.containsMouse ? 1 : 0
-    border.color: event ? "#4A5264" : accentColor
+    border.color: accentColor
     opacity: mouse.drag.active ? 0.9 : 1
     z: root.resizeActive ? 12 : mouse.drag.active ? 10 : selected ? 4 : 1
     scale: mouse.containsMouse ? 1.02 : 1
@@ -192,7 +192,7 @@ Rectangle {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
         enabled: !root.resizeActive
-        drag.target: root.locked ? null : root
+        drag.target: root.lockActive ? null : root
         drag.axis: Drag.XAndYAxis
         drag.minimumX: root.timelineLeft + root.horizontalInset
         drag.maximumX: root.timelineLeft + Math.max(0, root.dayCount - 1) * root.dayWidth + root.horizontalInset
@@ -214,7 +214,7 @@ Rectangle {
         }
 
         onReleased: {
-            if (!root.wasDragged || root.locked) {
+            if (!root.wasDragged || root.lockActive) {
                 return
             }
 
@@ -233,7 +233,7 @@ Rectangle {
 
     Rectangle {
         id: resizeHandle
-        visible: !root.event && !root.locked && root.height >= 42
+        visible: !root.lockActive && root.height >= 42
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -317,12 +317,4 @@ Rectangle {
         }
     }
 
-    layer.enabled: mouse.containsMouse || root.resizeActive
-    layer.effect: DropShadow {
-        horizontalOffset: 0
-        verticalOffset: 4
-        radius: 12
-        samples: 24
-        color: "#55000000"
-    }
 }

@@ -53,9 +53,11 @@ public:
     Q_INVOKABLE bool setStudyFrameEnabled(int frameId, bool enabled);
     Q_INVOKABLE bool deleteStudyFrame(int frameId);
     Q_INVOKABLE QVariantMap updateSelectedEvent(const QString& title, int dayIndex, const QString& startText, const QString& endText, bool locked, const QString& categoryName);
+    Q_INVOKABLE QVariantMap scheduleSelectedEventBlocks(const QString& title, int startDayIndex, int endDayIndex, const QString& startText, const QString& endText, bool locked, const QString& categoryName);
     Q_INVOKABLE bool moveBlock(int blockId, int dayIndex, int startMinute, int durationMinutes);
     Q_INVOKABLE bool moveTimelineItem(int itemId, bool isEvent, int dayIndex, int startMinute, int durationMinutes);
     Q_INVOKABLE QVariantMap moveSelectedTaskBlock(int dayIndex, const QString& startText, const QString& endText);
+    Q_INVOKABLE QVariantMap scheduleSelectedTaskBlocks(int startDayIndex, int endDayIndex, const QString& startText, const QString& endText, bool locked);
     Q_INVOKABLE bool setEventLocked(int eventId, bool locked);
     Q_INVOKABLE QVariantMap setSelectedBlockLocked(bool locked);
     Q_INVOKABLE QVariantMap previewTaskDraft(const QString& input);

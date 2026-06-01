@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Chrona VERSION 0.1.0 LANGUAGES CXX)
+project(Chrona VERSION 0.2.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -10,7 +10,9 @@ find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTo
 
 qt_standard_project_setup(REQUIRES 6.6)
 
-qt_policy(SET QTP0004 NEW)
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8)
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 qt_add_executable(Chrona
     src/main.cpp

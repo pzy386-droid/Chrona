@@ -78,13 +78,13 @@ Item {
         anchors.rightMargin: root.rightPadding
         anchors.topMargin: 22
         anchors.bottomMargin: 18
-        spacing: 18
+        spacing: 12
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 120
+            Layout.preferredHeight: 76
 
-            radius: 18
+            radius: 14
 
             color: "#161B22"
 
@@ -93,26 +93,28 @@ Item {
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 20
+                anchors.margins: 14
+                spacing: 10
 
                 ColumnLayout {
                     Layout.fillWidth: true
-                    spacing: 6
+                    spacing: 3
 
                     Text {
                         text: "👋 欢迎回来"
                         color: "#FFFFFF"
-                        font.pixelSize: 24
+                        font.pixelSize: 18
                         font.bold: true
                     }
 
                     Text {
                         text: "Chrona 已为今天生成学习计划"
                         color: "#9AA4B2"
-                        font.pixelSize: 13
+                        font.pixelSize: 12
                     }
 
                     Text {
+                        visible: false
                         text: Qt.formatDate(new Date(), "yyyy-MM-dd")
                         color: "#677184"
                         font.pixelSize: 11
@@ -120,9 +122,9 @@ Item {
                 }
 
                 Rectangle {
-                    width: 100
-                    height: 72
-                    radius: 12
+                    width: 82
+                    height: 48
+                    radius: 10
 
                     color: "#202638"
 
@@ -132,22 +134,22 @@ Item {
                         Text {
                             text: ScheduleService.taskModel.count
                             color: "white"
-                            font.pixelSize: 24
+                            font.pixelSize: 18
                             font.bold: true
                         }
 
                         Text {
                             text: "任务"
                             color: "#9AA4B2"
-                            font.pixelSize: 11
+                            font.pixelSize: 10
                         }
                     }
                 }
 
                 Rectangle {
-                    width: 100
-                    height: 72
-                    radius: 12
+                    width: 82
+                    height: 48
+                    radius: 10
 
                     color: "#202638"
 
@@ -157,14 +159,14 @@ Item {
                         Text {
                             text: ScheduleService.unscheduledCount
                             color: "#FFB547"
-                            font.pixelSize: 24
+                            font.pixelSize: 18
                             font.bold: true
                         }
 
                         Text {
                             text: "待规划"
                             color: "#9AA4B2"
-                            font.pixelSize: 11
+                            font.pixelSize: 10
                         }
                     }
                 }
@@ -230,12 +232,18 @@ Item {
                 focusTimer.restart()
             }
             onFocusStopRequested: root.requestEndFocus()
+            onRescheduleRequested: {
+                ScheduleService.reschedule()
+                quickAddToast.kind = "success"
+                quickAddToast.text = qsTr("已重新规划")
+                quickAddToast.open()
+            }
         }
 
         Rectangle {
-            visible: ScheduleService.unscheduledCount > 0
+            visible: false
             Layout.fillWidth: true
-            Layout.preferredHeight: 78
+            Layout.preferredHeight: 0
             radius: 8
             color: "#161A23"
             border.width: 1
@@ -324,8 +332,9 @@ Item {
         }
 
         Rectangle {
+            visible: false
             Layout.fillWidth: true
-            Layout.preferredHeight: 88
+            Layout.preferredHeight: 0
 
             radius: 14
 

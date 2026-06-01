@@ -5,11 +5,14 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     property var capacityStats: ({})
+    property string recommendationTitle: qsTr("AI 推荐")
+    property string recommendationBody: qsTr("14:00 - 15:30 适合高认知学习")
+    property string recommendationDelta: "+18%"
     signal addRequested(string text)
     signal imagePreviewRequested(string fileUrl)
 
-    height: 112
-    radius: 8
+    height: 116
+    radius: 12
     color: "#161A23"
     border.width: 1
     border.color: dropArea.containsDrag ? "#7C8CFF" : "#252B3A"
@@ -28,13 +31,77 @@ Rectangle {
 
     RowLayout {
         anchors.fill: parent
-        anchors.margins: 16
+        anchors.margins: 14
         spacing: 12
+
+        Rectangle {
+            Layout.preferredWidth: 260
+            Layout.fillHeight: true
+            radius: 10
+            color: "#10141C"
+            border.width: 1
+            border.color: "#30384C"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.margins: 14
+                spacing: 12
+
+                Rectangle {
+                    Layout.preferredWidth: 38
+                    Layout.preferredHeight: 38
+                    radius: 12
+                    color: "#202638"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "AI"
+                        color: "#8B99FF"
+                        font.pixelSize: 13
+                        font.weight: Font.Bold
+                    }
+                }
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 4
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: 8
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.recommendationTitle
+                            color: "#E6EAF2"
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            text: root.recommendationDelta
+                            color: "#4ADE80"
+                            font.pixelSize: 18
+                            font.weight: Font.Bold
+                        }
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.recommendationBody
+                        color: "#9AA4B2"
+                        font.pixelSize: 11
+                        elide: Text.ElideRight
+                    }
+                }
+            }
+        }
 
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
-            radius: 8
+            radius: 10
             color: "#10141C"
             border.width: 1
             border.color: "#252B3A"
@@ -81,9 +148,9 @@ Rectangle {
         }
 
         Rectangle {
-            Layout.preferredWidth: 210
+            Layout.preferredWidth: 188
             Layout.fillHeight: true
-            radius: 8
+            radius: 10
             color: dropArea.containsDrag ? "#202842" : "#10141C"
             border.width: 1
             border.color: dropArea.containsDrag ? "#7C8CFF" : "#252B3A"
@@ -101,18 +168,21 @@ Rectangle {
                 }
 
                 Text {
+                    width: parent.parent.width - 20
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: qsTr("课程表 / 作业通知 / 考试安排")
                     color: "#8C96AA"
-                    font.pixelSize: 11
+                    font.pixelSize: 10
+                    horizontalAlignment: Text.AlignHCenter
+                    elide: Text.ElideRight
                 }
             }
         }
 
         Rectangle {
-            Layout.preferredWidth: 184
+            Layout.preferredWidth: 164
             Layout.fillHeight: true
-            radius: 8
+            radius: 10
             color: "#10141C"
             clip: true
 
@@ -155,22 +225,18 @@ Rectangle {
     component CapsuleButton: Rectangle {
         id: button
         property alias text: label.text
-        property bool muted: false
         signal clicked()
 
-        width: muted ? 88 : 76
+        width: 76
         height: 38
         radius: 8
-        color: muted ? (mouse.containsMouse ? "#202638" : "#161A23") : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
-        border.width: muted ? 1 : 0
-        border.color: "#30384C"
-
+        color: mouse.containsMouse ? "#8B99FF" : "#7C8CFF"
         Behavior on color { ColorAnimation { duration: 140 } }
 
         Text {
             id: label
             anchors.centerIn: parent
-            color: muted ? "#AAB4C6" : "white"
+            color: "white"
             font.pixelSize: 13
             font.weight: Font.DemiBold
         }
@@ -179,6 +245,7 @@ Rectangle {
             id: mouse
             anchors.fill: parent
             hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
             onClicked: button.clicked()
         }
     }

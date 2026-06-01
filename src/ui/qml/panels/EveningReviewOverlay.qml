@@ -4,77 +4,200 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
-    visible: false // 默认隐藏，等侧边栏按钮点击后才会显示
+    visible: false
     color: "#B00A0E17"
     z: 200
 
-    // 拦截点击事件，防止点到后面的日历
     MouseArea { anchors.fill: parent }
 
     Rectangle {
-        width: 640
-        height: 460
-        radius: 16
-        color: "#161A23"
+        width: 620
+        height: 430
+        radius: 22
+        color: "#11151D"
         border.color: "#30384C"
         border.width: 1
         anchors.centerIn: parent
 
-        // 1. 标题
-        Text {
-            id: titleText
-            text: "🌙 晚间复盘：今天辛苦了"
-            color: "#E6EAF2"
-            font.pixelSize: 22
-            font.weight: Font.Bold
-            anchors { top: parent.top; topMargin: 24; horizontalCenter: parent.horizontalCenter }
-        }
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 28
+            spacing: 20
 
-        Column {
-            anchors { top: titleText.bottom; topMargin: 32; left: parent.left; right: parent.right; margins: 32 }
-            spacing: 24
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
 
-            // 2. 数据看板
-            Row {
-                spacing: 60
-                anchors.horizontalCenter: parent.horizontalCenter
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 6
 
-                Column {
-                    spacing: 8
-                    Text { text: "今日专注时长"; color: "#94A3B8"; font.pixelSize: 14; anchors.horizontalCenter: parent.horizontalCenter }
-                    Text { text: "120 分钟"; color: "#A855F7"; font.pixelSize: 32; font.weight: Font.Bold; anchors.horizontalCenter: parent.horizontalCenter }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("晚间复盘")
+                        color: "#E6EAF2"
+                        font.pixelSize: 24
+                        font.weight: Font.Bold
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("用于结束当天学习状态，回顾专注时间，并把未完成的非固定任务交回 Scheduler 下次重规划。")
+                        color: "#8D98AB"
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
                 }
-                Column {
-                    spacing: 8
-                    Text { text: "完成任务数"; color: "#94A3B8"; font.pixelSize: 14; anchors.horizontalCenter: parent.horizontalCenter }
-                    Text { text: "5 项"; color: "#4ADE80"; font.pixelSize: 32; font.weight: Font.Bold; anchors.horizontalCenter: parent.horizontalCenter }
+
+                Rectangle {
+                    Layout.preferredWidth: 32
+                    Layout.preferredHeight: 32
+                    radius: 9
+                    color: closeMouse.containsMouse ? "#202638" : "#151A23"
+                    border.width: 1
+                    border.color: "#2C3548"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "×"
+                        color: "#AAB4C6"
+                        font.pixelSize: 18
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        id: closeMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.visible = false
+                    }
                 }
             }
 
-            Rectangle { width: parent.width; height: 1; color: "#30384C" }
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
 
-            // 3. 顺延提醒
-            Text { text: "🔄 顺延与自动调整："; color: "#E6EAF2"; font.weight: Font.DemiBold }
+                StatCard {
+                    Layout.fillWidth: true
+                    label: qsTr("今日专注")
+                    value: qsTr("120 分钟")
+                    accent: "#A855F7"
+                }
+
+                StatCard {
+                    Layout.fillWidth: true
+                    label: qsTr("完成任务")
+                    value: qsTr("5 项")
+                    accent: "#4ADE80"
+                }
+            }
 
             Rectangle {
-                width: parent.width; height: 60
-                color: "#1E293B"
-                radius: 8
+                Layout.fillWidth: true
+                Layout.preferredHeight: 74
+                radius: 12
+                color: "#151A23"
+                border.width: 1
+                border.color: "#2C3548"
+
                 Text {
-                    anchors.centerIn: parent
-                    text: "有 2 项未完成的非固定任务已由 AI 自动排程至明天。"; color: "#94A3B8"
+                    anchors.fill: parent
+                    anchors.margins: 16
+                    text: qsTr("未完成的非固定任务不会被删除；它们会在下一次自动重规划时继续进入时间轴。固定时间和锁定时间块保持不变。")
+                    color: "#AAB4C6"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 12
+
+                ActionButton {
+                    Layout.fillWidth: true
+                    text: qsTr("稍后再说")
+                    muted: true
+                    onClicked: root.visible = false
+                }
+
+                ActionButton {
+                    Layout.fillWidth: true
+                    text: qsTr("确认结束今日")
+                    onClicked: root.visible = false
                 }
             }
         }
+    }
 
-        // 4. 结束按钮
-        Button {
-            text: "💤 确认并结束今日学习"
-            anchors { bottom: parent.bottom; bottomMargin: 24; horizontalCenter: parent.horizontalCenter }
-            highlighted: true
-            onClicked: {
-                root.visible = false // 点击后关闭弹窗
+    component StatCard: Rectangle {
+        property string label: ""
+        property string value: ""
+        property color accent: "#7C8CFF"
+
+        Layout.preferredHeight: 104
+        radius: 14
+        color: "#151A23"
+        border.width: 1
+        border.color: "#2C3548"
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 8
+
+            Text {
+                Layout.fillWidth: true
+                text: label
+                color: "#8D98AB"
+                font.pixelSize: 12
             }
+
+            Text {
+                Layout.fillWidth: true
+                text: value
+                color: accent
+                font.pixelSize: 30
+                font.weight: Font.Bold
+            }
+        }
+    }
+
+    component ActionButton: Rectangle {
+        id: button
+        property alias text: label.text
+        property bool muted: false
+        signal clicked()
+
+        Layout.preferredHeight: 46
+        radius: 12
+        color: muted
+            ? (mouse.containsMouse ? "#202638" : "#151A23")
+            : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
+        border.width: muted ? 1 : 0
+        border.color: "#30384C"
+
+        Behavior on color { ColorAnimation { duration: 140 } }
+
+        Text {
+            id: label
+            anchors.centerIn: parent
+            color: muted ? "#AAB4C6" : "white"
+            font.pixelSize: 14
+            font.weight: Font.DemiBold
+        }
+
+        MouseArea {
+            id: mouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: button.clicked()
         }
     }
 }

@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Chrona
 import "./panels"
+
 ApplicationWindow {
     id: window
     width: 1440
@@ -10,9 +11,12 @@ ApplicationWindow {
     visible: true
     title: "Chrona"
     color: "#0F1117"
+
     property bool detailOpen: true
+
     Connections {
         target: ScheduleService
+
         function onSelectedTaskChanged() {
             window.detailOpen = true
         }
@@ -30,6 +34,7 @@ ApplicationWindow {
                 id: sidebar
                 Layout.fillHeight: true
                 Layout.preferredWidth: collapsed ? 76 : 248
+
                 Behavior on Layout.preferredWidth {
                     NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                 }
@@ -50,8 +55,14 @@ ApplicationWindow {
                 opacity: window.detailOpen ? 1 : 0
                 task: ScheduleService.selectedDetail
                 onCloseRequested: window.detailOpen = false
-                Behavior on Layout.preferredWidth { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-                Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                Behavior on Layout.preferredWidth {
+                    NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                }
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 160 }
+                }
             }
         }
 
@@ -70,7 +81,7 @@ ApplicationWindow {
 
             Text {
                 anchors.centerIn: parent
-                text: "‹"
+                text: "›"
                 color: "#E6EAF2"
                 font.pixelSize: 24
                 font.weight: Font.DemiBold
@@ -84,15 +95,17 @@ ApplicationWindow {
                 onClicked: window.detailOpen = true
             }
         }
-       DailyPlanOverlay {
-        id: dailyPlanOverlay
-        anchors.fill: parent // 填满整个窗口
-        visible: true        // ⚠️ 调试阶段先设为 true，方便你马上看到效果调 UI
+
+        DailyPlanOverlay {
+            id: dailyPlanOverlay
+            anchors.fill: parent
+            visible: false
+        }
+
+        EveningReviewOverlay {
+            id: eveningReviewOverlay
+            anchors.fill: parent
+            visible: false
+        }
     }
-       EveningReviewOverlay {
-               id: eveningReviewOverlay
-               anchors.fill: parent
-               visible: false // 默认隐藏，由 Sidebar 里的按钮唤醒
-           }
-}
 }

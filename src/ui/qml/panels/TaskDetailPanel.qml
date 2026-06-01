@@ -8,6 +8,8 @@ Rectangle {
     property var task: ({})
     property string editStartTime: "09:00"
     property string editEndTime: "10:30"
+    property int rangeStartDayIndex: 0
+    property int rangeEndDayIndex: 0
     readonly property bool hasTask: task && task.id
     readonly property bool isEvent: hasTask && task.kind === "event"
     readonly property var preferredValues: ["morning", "afternoon", "evening"]
@@ -35,10 +37,10 @@ Rectangle {
         }
         titleField.text = task.title || ""
         notesField.text = task.notes || ""
-        deadlineField.text = task.deadlineText || ""
         editStartTime = task.blockStartText || "09:00"
         editEndTime = task.blockEndText || "10:30"
-        dayPicker.currentIndex = Math.max(0, Math.min(6, task.blockDayIndex || 0))
+        rangeStartDayIndex = Math.max(0, Math.min(6, task.blockDayIndex || 0))
+        rangeEndDayIndex = Math.max(rangeStartDayIndex, Math.min(6, task.blockEndDayIndex || rangeStartDayIndex))
         priorityPicker.currentIndex = Math.max(0, Math.min(2, task.priority || 0))
         categoryField.text = task.categoryName || ""
         var preferred = task.preferredStudyTime || "evening"
@@ -94,11 +96,8 @@ Rectangle {
                     id: eventLockToggle
                     checked: true
                     onToggled: function(checked) {
-                        var result = root.isEvent
-                            ? { ok: ScheduleService.setEventLocked(root.task.id, checked), message: checked ? qsTr("已固定当前时间块") : qsTr("已取消固定") }
-                            : ScheduleService.setSelectedBlockLocked(checked)
-                        statusText.color = result.ok ? "#A9F0C9" : "#FFB09B"
-                        statusText.text = result.message || ""
+                        statusText.color = "#A9F0C9"
+                        statusText.text = checked ? qsTr("保存后将固定整个连续时间块") : qsTr("保存后将取消固定整个连续时间块")
                     }
                 }
             }
@@ -194,7 +193,7 @@ Rectangle {
                 width: parent.width
                 spacing: 13
 
-                FieldLabel { text: root.isEvent ? qsTr("标题") : qsTr("任务标题") }
+                FieldLabel { text: qsTr("任务标题") }
                 TextField {
                     id: titleField
                     Layout.fillWidth: true
@@ -208,13 +207,34 @@ Rectangle {
                     background: FieldBackground {}
                 }
 
+                Rectangle {
+                    visible: false
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 54
+                    radius: 10
+                    color: "#151A23"
+                    border.width: 1
+                    border.color: "#2C3548"
+
+                    Text {
+                        anchors.fill: parent
+                        anchors.leftMargin: 12
+                        anchors.rightMargin: 12
+                        verticalAlignment: Text.AlignVCenter
+                        text: qsTr("固定时间会作为硬约束保留在时间轴中，Scheduler 会自动避开。选择连续日期后保存，可生成每天同一时间的固定块。")
+                        color: "#8D98AB"
+                        font.pixelSize: 11
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
                 FieldLabel {
-                    visible: !root.isEvent
+                    visible: true
                     text: qsTr("备注")
                 }
                 TextArea {
                     id: notesField
-                    visible: !root.isEvent
+                    visible: true
                     Layout.fillWidth: true
                     Layout.preferredHeight: 88
                     color: "#E6EAF2"
@@ -224,23 +244,6 @@ Rectangle {
                     placeholderTextColor: "#667187"
                     font.pixelSize: 13
                     wrapMode: TextEdit.WordWrap
-                    background: FieldBackground {}
-                }
-
-                FieldLabel {
-                    visible: !root.isEvent
-                    text: qsTr("截止时间")
-                }
-                TextField {
-                    id: deadlineField
-                    visible: !root.isEvent
-                    Layout.fillWidth: true
-                    color: "#E6EAF2"
-                    selectedTextColor: "white"
-                    selectionColor: "#5968D8"
-                    placeholderText: "2026-05-30 23:00"
-                    placeholderTextColor: "#667187"
-                    font.pixelSize: 13
                     background: FieldBackground {}
                 }
 
@@ -254,7 +257,7 @@ Rectangle {
                     }
 
                     Text {
-                        visible: !root.isEvent && (root.task.blockTotal || 0) > 1
+                        visible: (root.task.blockTotal || 0) > 1
                         text: qsTr("第 %1 / %2 块").arg(root.task.blockOrdinal || 1).arg(root.task.blockTotal || 1)
                         color: "#7C8CFF"
                         font.pixelSize: 11
@@ -262,9 +265,15 @@ Rectangle {
                     }
                 }
 
-                OptionPills {
+                DayRangePills {
                     id: dayPicker
                     Layout.fillWidth: true
+                    startIndex: root.rangeStartDayIndex
+                    endIndex: root.rangeEndDayIndex
+                    onRangeChanged: function(startIndex, endIndex) {
+                        root.rangeStartDayIndex = startIndex
+                        root.rangeEndDayIndex = endIndex
+                    }
                     options: [qsTr("今天"), qsTr("明天"), qsTr("后天"), qsTr("第4天"), qsTr("第5天"), qsTr("第6天"), qsTr("第7天")]
                 }
 
@@ -298,7 +307,7 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        visible: !root.isEvent
+                        visible: true
                         FieldLabel { text: qsTr("优先级") }
                         OptionPills {
                             id: priorityPicker
@@ -322,22 +331,22 @@ Rectangle {
                 }
 
                 FieldLabel {
-                    visible: !root.isEvent
+                    visible: true
                     text: qsTr("偏好学习时间")
                 }
                 OptionPills {
                     id: preferredPicker
-                    visible: !root.isEvent
+                    visible: true
                     Layout.fillWidth: true
                     options: [qsTr("上午"), qsTr("下午"), qsTr("晚上")]
                 }
 
                 FieldLabel {
-                    visible: !root.isEvent
+                    visible: true
                     text: qsTr("自动调度偏好")
                 }
                 Rectangle {
-                    visible: !root.isEvent
+                    visible: true
                     Layout.fillWidth: true
                     Layout.preferredHeight: 46
                     radius: 8
@@ -376,7 +385,7 @@ Rectangle {
                 }
 
                 RowLayout {
-                    visible: !root.isEvent
+                    visible: true
                     Layout.fillWidth: true
                     spacing: 10
                     ColumnLayout {
@@ -402,7 +411,7 @@ Rectangle {
                 }
 
                 RowLayout {
-                    visible: !root.isEvent
+                    visible: true
                     Layout.fillWidth: true
                     spacing: 10
                     ColumnLayout {
@@ -456,13 +465,14 @@ Rectangle {
         ActionButton {
             visible: root.hasTask
             Layout.fillWidth: true
-            text: root.isEvent ? qsTr("保存固定时间") : qsTr("保存任务和时间块")
+            text: qsTr("保存时间块")
             onClicked: {
                 var savedTitle = titleField.text
                 var savedNotes = notesField.text
-                var savedDeadline = deadlineField.text
+                var savedDeadline = root.task.deadlineText || ""
                 var savedCategory = categoryField.text
-                var savedDayIndex = dayPicker.currentIndex
+                var savedDayIndex = root.rangeStartDayIndex
+                var savedEndDayIndex = root.rangeEndDayIndex
                 var savedStartTime = root.editStartTime
                 var savedEndTime = root.editEndTime
                 var savedPriority = priorityPicker.currentIndex
@@ -485,9 +495,10 @@ Rectangle {
                 }
 
                 if (root.isEvent) {
-                    var eventResult = ScheduleService.updateSelectedEvent(
+                    var eventResult = ScheduleService.scheduleSelectedEventBlocks(
                         savedTitle,
                         savedDayIndex,
+                        savedEndDayIndex,
                         savedStartTime,
                         savedEndTime,
                         savedEventLocked,
@@ -498,17 +509,10 @@ Rectangle {
                     return
                 }
 
-                var moveResult = ScheduleService.moveSelectedTaskBlock(savedDayIndex, savedStartTime, savedEndTime)
+                var moveResult = ScheduleService.scheduleSelectedTaskBlocks(savedDayIndex, savedEndDayIndex, savedStartTime, savedEndTime, savedEventLocked)
                 if (!moveResult.ok) {
                     statusText.color = "#FFB09B"
                     statusText.text = moveResult.message || qsTr("移动失败")
-                    return
-                }
-
-                var lockResult = ScheduleService.setSelectedBlockLocked(savedEventLocked)
-                if (!lockResult.ok) {
-                    statusText.color = "#FFB09B"
-                    statusText.text = lockResult.message || qsTr("固定状态保存失败")
                     return
                 }
 
@@ -819,6 +823,81 @@ Rectangle {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: pills.currentIndex = index
+                    }
+                }
+            }
+        }
+    }
+
+    component DayRangePills: Rectangle {
+        id: pills
+        property var options: []
+        property int startIndex: 0
+        property int endIndex: 0
+        signal rangeChanged(int startIndex, int endIndex)
+
+        function choose(index) {
+            var start = Math.min(startIndex, endIndex)
+            var end = Math.max(startIndex, endIndex)
+            if (start === end) {
+                start = Math.min(start, index)
+                end = Math.max(end, index)
+            } else if (index < start) {
+                start = index
+            } else if (index > end) {
+                end = index
+            } else if (index === start) {
+                start = Math.min(end, start + 1)
+            } else if (index === end) {
+                end = Math.max(start, end - 1)
+            } else {
+                start = index
+                end = index
+            }
+            startIndex = start
+            endIndex = end
+            rangeChanged(start, end)
+        }
+
+        Layout.preferredHeight: 42
+        radius: 8
+        color: "#151A23"
+        border.width: 1
+        border.color: "#2C3548"
+        clip: true
+
+        RowLayout {
+            anchors.fill: parent
+            anchors.margins: 4
+            spacing: 4
+
+            Repeater {
+                model: pills.options
+                delegate: Rectangle {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    radius: 7
+                    readonly property bool selected: index >= Math.min(pills.startIndex, pills.endIndex) && index <= Math.max(pills.startIndex, pills.endIndex)
+                    color: selected ? "#252D44" : "transparent"
+                    border.width: selected ? 1 : 0
+                    border.color: "#7C8CFF"
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.width { NumberAnimation { duration: 150 } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData
+                        color: parent.selected ? "#E6EAF2" : "#8D98AB"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: pills.choose(index)
                     }
                 }
             }

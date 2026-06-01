@@ -56,6 +56,10 @@ QVariant TimelineModel::data(const QModelIndex& index, int role) const
         return item.blockOrdinal;
     case BlockTotalRole:
         return item.blockTotal;
+    case SpanDaysRole:
+        return item.spanDays;
+    case HiddenInSpanRole:
+        return item.hiddenInSpan;
     default:
         return {};
     }
@@ -81,7 +85,9 @@ QHash<int, QByteArray> TimelineModel::roleNames() const
         {IsEventLockedRole, "isEventLocked"},
         {SelectedRole, "selected"},
         {BlockOrdinalRole, "blockOrdinal"},
-        {BlockTotalRole, "blockTotal"}
+        {BlockTotalRole, "blockTotal"},
+        {SpanDaysRole, "spanDays"},
+        {HiddenInSpanRole, "hiddenInSpan"}
     };
 }
 

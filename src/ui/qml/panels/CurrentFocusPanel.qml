@@ -11,6 +11,7 @@ Rectangle {
     property bool active: false
     signal focusStarted()
     signal focusStopRequested()
+    signal rescheduleRequested()
 
     height: 104
     radius: 8
@@ -66,26 +67,58 @@ Rectangle {
             color: "#2A1D1B"
             border.color: "#FF7A59"
             border.width: 1
-            Layout.preferredWidth: 156
+            Layout.preferredWidth: 340
             Layout.preferredHeight: 42
 
-            Text {
-                anchors.centerIn: parent
-                width: parent.width - 18
-                text: {
-                    if (root.scheduleIssues && root.scheduleIssues.length > 0) {
-                        var issue = root.scheduleIssues[0]
-                        return qsTr("%1：%2").arg(issue.title || qsTr("任务")).arg(issue.reason || qsTr("无法按时排入"))
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 12
+                anchors.rightMargin: 6
+                spacing: 8
+
+                Text {
+                    Layout.fillWidth: true
+                    text: {
+                        if (root.scheduleIssues && root.scheduleIssues.length > 0) {
+                            var issue = root.scheduleIssues[0]
+                            return qsTr("调度冲突 · %1，剩余 %2 分钟未安排")
+                                .arg(issue.title || qsTr("任务"))
+                                .arg(issue.remainingMinutes || 0)
+                        }
+                        return qsTr("调度冲突 · %1 个任务待处理").arg(root.unscheduledCount)
                     }
-                    return qsTr("%1 个任务待处理").arg(root.unscheduledCount)
+                    color: "#FFB09B"
+                    font.pixelSize: 11
+                    maximumLineCount: 2
+                    elide: Text.ElideRight
+                    wrapMode: Text.WordWrap
+                    verticalAlignment: Text.AlignVCenter
                 }
-                color: "#FFB09B"
-                font.pixelSize: 11
-                lineHeight: 1.15
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-                horizontalAlignment: Text.AlignHCenter
+
+                Rectangle {
+                    Layout.preferredWidth: 78
+                    Layout.preferredHeight: 30
+                    radius: 7
+                    color: conflictMouse.containsMouse ? "#3A2824" : "#11151D"
+                    border.width: 1
+                    border.color: "#684033"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("重规划")
+                        color: "#E6EAF2"
+                        font.pixelSize: 11
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        id: conflictMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.rescheduleRequested()
+                    }
+                }
             }
         }
 
