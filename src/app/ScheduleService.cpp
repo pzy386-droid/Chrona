@@ -505,7 +505,7 @@ QVariantMap ScheduleService::scheduleSelectedEventBlocks(const QString& title, i
             return {{"ok", false}, {"message", QObject::tr("固定时间超出当前排程范围")}};
         }
         if (!m_conflicts.canPlace({event.start, event.end}, otherEvents, blocks)) {
-            return {{"ok", false}, {"message", QObject::tr("连续固定时间存在冲突，请调整日期或时间")}};
+            return {{"ok", false}, {"message", QObject::tr("连续固定时间存在冲突，请调整日期或者时间")}};
         }
 
         otherEvents.push_back(event);

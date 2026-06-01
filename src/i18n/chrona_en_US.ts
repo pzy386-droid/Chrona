@@ -42,7 +42,7 @@
     <message><source>低</source><translation>Low</translation></message>
     <message><source>课程 / 固定时间</source><translation>Course / fixed time</translation></message>
     <message><source>学习任务</source><translation>Study task</translation></message>
-    <message><source>今天没有自动安排</source><translation>No auto schedule today</translation></message>
+    <message><source>今天无自动安排</source><translation>No auto schedule today</translation></message>
     <message><source>可以添加任务或检查冲突</source><translation>Add tasks or check conflicts</translation></message>
     <message><source>AI 输入将在后续版本接入</source><translation>AI input will arrive in a later version</translation></message>
     <message><source>智能调度建议将在后续版本接入</source><translation>Smart scheduling suggestions will arrive later</translation></message>
