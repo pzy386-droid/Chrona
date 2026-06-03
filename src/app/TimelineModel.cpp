@@ -62,6 +62,8 @@ QVariant TimelineModel::data(const QModelIndex& index, int role) const
         return item.hiddenInSpan;
     case ExplanationRole:
         return item.explanation;
+    case CompletedRole:
+        return item.completed;
     default:
         return {};
     }
@@ -90,7 +92,8 @@ QHash<int, QByteArray> TimelineModel::roleNames() const
         {BlockTotalRole, "blockTotal"},
         {SpanDaysRole, "spanDays"},
         {HiddenInSpanRole, "hiddenInSpan"},
-        {ExplanationRole, "explanation"}
+        {ExplanationRole, "explanation"},
+        {CompletedRole, "completed"}
     };
 }
 

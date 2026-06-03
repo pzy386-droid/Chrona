@@ -46,6 +46,7 @@ public:
     Q_INVOKABLE QVariantMap startFocus();
     Q_INVOKABLE QVariantMap stopFocus();
     Q_INVOKABLE void completeTask(int taskId);
+    Q_INVOKABLE QVariantMap completeBlock(int blockId);
     Q_INVOKABLE QVariantMap updateTask(int taskId, const QString& title, const QString& notes, const QString& deadlineText, int estimatedMinutes, int priority,
                                        const QString& categoryName, const QString& preferredStudyTime, bool autoScheduleEnabled, int deadlineType,
                                        int minChunkMinutes, int idealChunkMinutes, int effortLevel);

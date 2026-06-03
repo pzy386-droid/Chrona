@@ -23,8 +23,8 @@ Item {
 
     function endFocus(completeTask) {
         focusExitConfirmPopup.close()
-        if (completeTask && ScheduleService.focusItem.taskId > 0) {
-            ScheduleService.completeTask(ScheduleService.focusItem.taskId)
+        if (completeTask && ScheduleService.focusItem.blockId > 0) {
+            ScheduleService.completeBlock(ScheduleService.focusItem.blockId)
         } else {
             ScheduleService.stopFocus()
         }

@@ -107,11 +107,13 @@ bool Migrations::run(QSqlDatabase db)
               source INTEGER NOT NULL,
               schedule_run_id INTEGER,
               explanation TEXT,
+              completed_at TEXT,
               created_at TEXT NOT NULL,
               FOREIGN KEY(task_id) REFERENCES tasks(id)
             )
         )SQL")) &&
         addColumnIfMissing(db, QStringLiteral("time_blocks"), QStringLiteral("explanation"), QStringLiteral("TEXT")) &&
+        addColumnIfMissing(db, QStringLiteral("time_blocks"), QStringLiteral("completed_at"), QStringLiteral("TEXT")) &&
         exec(db, QStringLiteral(R"SQL(
             CREATE TABLE IF NOT EXISTS schedule_runs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,

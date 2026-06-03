@@ -13,6 +13,7 @@ struct TimeBlock {
     int scheduleRunId = 0;
     QString createdAt;
     QString explanation;
+    QDateTime completedAt;
 
     QJsonObject toJson() const;
     static TimeBlock fromJson(const QJsonObject& object);

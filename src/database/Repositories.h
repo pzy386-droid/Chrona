@@ -57,6 +57,7 @@ public:
     int createBlock(const TimeBlock& block) const;
     bool moveBlock(int blockId, const QDateTime& start, const QDateTime& end) const;
     bool setBlockSource(int blockId, BlockSource source) const;
+    bool completeBlock(int blockId) const;
 
 private:
     QSqlDatabase m_db;

@@ -47,7 +47,7 @@ QVector<Task> subtractLockedBlockCapacity(QVector<Task> tasks, const QVector<Tim
 {
     QHash<int, int> scheduledMinutesByTask;
     for (const auto& block : lockedBlocks) {
-        if (block.taskId <= 0 || !block.start.isValid() || !block.end.isValid() || block.end <= block.start) {
+        if (block.taskId <= 0 || block.completedAt.isValid() || !block.start.isValid() || !block.end.isValid() || block.end <= block.start) {
             continue;
         }
         scheduledMinutesByTask[block.taskId] += static_cast<int>(block.start.secsTo(block.end) / 60);
@@ -232,11 +232,16 @@ void ScheduleService::selectTimelineItem(int taskId, int blockId)
 QVariantMap ScheduleService::startFocus()
 {
     const int taskId = m_focusItem.value(QStringLiteral("taskId")).toInt();
+    const int blockId = m_focusItem.value(QStringLiteral("blockId")).toInt();
     if (taskId <= 0) {
         return {{"ok", false}, {"message", QObject::tr("当前没有可开始的任务")}};
     }
-    selectTask(taskId);
-    return {{"ok", true}, {"message", QObject::tr("已进入当前专注")}, {"taskId", taskId}};
+    if (blockId > 0) {
+        selectTimelineItem(taskId, blockId);
+    } else {
+        selectTask(taskId);
+    }
+    return {{"ok", true}, {"message", QObject::tr("已进入当前专注")}, {"taskId", taskId}, {"blockId", blockId}};
 }
 
 QVariantMap ScheduleService::stopFocus()
@@ -252,6 +257,25 @@ void ScheduleService::completeTask(int taskId)
         }
         reschedule();
     }
+}
+
+QVariantMap ScheduleService::completeBlock(int blockId)
+{
+    if (blockId <= 0) {
+        return {{"ok", false}, {"message", QObject::tr("当前没有可完成的时间块")}};
+    }
+
+    if (!m_blocks.completeBlock(blockId)) {
+        return {{"ok", false}, {"message", QObject::tr("时间块完成失败")}};
+    }
+
+    const int selectedTaskId = m_selectedTaskId;
+    m_selectedBlockId = blockId;
+    reschedule();
+    if (m_timelineModel.itemById(blockId)) {
+        selectTimelineItem(selectedTaskId, blockId);
+    }
+    return {{"ok", true}, {"message", QObject::tr("已完成当前时间块")}};
 }
 
 QVariantMap ScheduleService::updateTask(int taskId, const QString& title, const QString& notes, const QString& deadlineInput, int estimatedMinutes, int priority,
@@ -955,6 +979,7 @@ QVariantMap ScheduleService::eveningReview() const
     QHash<int, Task> taskById;
     QHash<int, int> todayMinutesByTask;
     int plannedMinutes = 0;
+    int completedMinutes = 0;
     for (const auto& task : tasks) {
         taskById.insert(task.id, task);
     }
@@ -965,9 +990,11 @@ QVariantMap ScheduleService::eveningReview() const
         const int minutes = static_cast<int>(block.start.secsTo(block.end) / 60);
         plannedMinutes += minutes;
         todayMinutesByTask[block.taskId] += minutes;
+        if (block.completedAt.isValid()) {
+            completedMinutes += minutes;
+        }
     }
 
-    int completedMinutes = 0;
     QVariantList completedTasks;
     QVariantList unfinishedTasks;
     QVariantList carriedOverTasks;
@@ -977,7 +1004,6 @@ QVariantMap ScheduleService::eveningReview() const
         QVariantMap map = taskToMap(task);
         map.insert(QStringLiteral("todayPlannedMinutes"), it.value());
         if (task.status == TaskStatus::Done) {
-            completedMinutes += it.value();
             completedTasks.push_back(map);
         } else {
             unfinishedTasks.push_back(map);
@@ -1144,6 +1170,7 @@ void ScheduleService::rebuildTimeline(const QVector<Task>& tasks, const QVector<
         item.blockOrdinal = blockOrdinalsById.value(block.id, 1);
         item.blockTotal = blockTotalsByTask.value(block.taskId, 1);
         item.explanation = block.explanation;
+        item.completed = block.completedAt.isValid();
         items.push_back(item);
     }
 
@@ -1196,15 +1223,15 @@ void ScheduleService::rebuildTimeline(const QVector<Task>& tasks, const QVector<
     m_focusItem.clear();
     const QDateTime now = QDateTime::currentDateTime();
     for (const auto& item : items) {
-        if (!item.event && item.start <= now && now < item.end) {
-            m_focusItem = {{"title", item.title}, {"subtitle", focusSubtitle(item)}, {"color", item.color}, {"taskId", item.taskId}};
+        if (!item.event && !item.completed && item.start <= now && now < item.end) {
+            m_focusItem = {{"title", item.title}, {"subtitle", focusSubtitle(item)}, {"color", item.color}, {"taskId", item.taskId}, {"blockId", item.id}};
             break;
         }
     }
     if (m_focusItem.isEmpty()) {
         for (const auto& item : items) {
-            if (!item.event && item.start > now) {
-                m_focusItem = {{"title", item.title}, {"subtitle", focusSubtitle(item)}, {"color", item.color}, {"taskId", item.taskId}};
+            if (!item.event && !item.completed && item.start > now) {
+                m_focusItem = {{"title", item.title}, {"subtitle", focusSubtitle(item)}, {"color", item.color}, {"taskId", item.taskId}, {"blockId", item.id}};
                 break;
             }
         }

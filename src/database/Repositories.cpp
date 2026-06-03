@@ -215,14 +215,32 @@ bool TaskRepository::updateScheduleStatuses(const QVector<int>& scheduledTaskIds
 
 bool TaskRepository::completeTask(int taskId) const
 {
-    QSqlQuery query(m_db);
-    query.prepare(QStringLiteral("UPDATE tasks SET status = ?, remaining_minutes = 0, completed_at = ?, updated_at = ? WHERE id = ?"));
+    QSqlDatabase db = m_db;
+    if (!db.transaction()) {
+        return false;
+    }
+
     const QString now = toIso(QDateTime::currentDateTime());
+    QSqlQuery blocks(db);
+    blocks.prepare(QStringLiteral("UPDATE time_blocks SET completed_at = ? WHERE task_id = ? AND completed_at IS NULL"));
+    blocks.addBindValue(now);
+    blocks.addBindValue(taskId);
+    if (!blocks.exec()) {
+        db.rollback();
+        return false;
+    }
+
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral("UPDATE tasks SET status = ?, remaining_minutes = 0, completed_at = ?, updated_at = ? WHERE id = ?"));
     query.addBindValue(static_cast<int>(TaskStatus::Done));
     query.addBindValue(now);
     query.addBindValue(now);
     query.addBindValue(taskId);
-    return query.exec();
+    if (!query.exec()) {
+        db.rollback();
+        return false;
+    }
+    return db.commit();
 }
 
 bool TaskRepository::deleteTask(int taskId) const
@@ -409,7 +427,7 @@ QVector<TimeBlock> TimeBlockRepository::blocksBetween(const QDateTime& start, co
     QVector<TimeBlock> blocks;
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
-        SELECT id, task_id, start_time, end_time, source, schedule_run_id, created_at, explanation
+        SELECT id, task_id, start_time, end_time, source, schedule_run_id, created_at, explanation, completed_at
         FROM time_blocks
         WHERE end_time > ? AND start_time < ?
         ORDER BY start_time ASC
@@ -427,6 +445,7 @@ QVector<TimeBlock> TimeBlockRepository::blocksBetween(const QDateTime& start, co
         block.scheduleRunId = query.value(5).toInt();
         block.createdAt = query.value(6).toString();
         block.explanation = query.value(7).toString();
+        block.completedAt = fromIso(query.value(8));
         blocks.push_back(block);
     }
     return blocks;
@@ -436,7 +455,7 @@ QVector<TimeBlock> TimeBlockRepository::lockedBlocksBetween(const QDateTime& sta
 {
     QVector<TimeBlock> blocks = blocksBetween(start, end);
     blocks.erase(std::remove_if(blocks.begin(), blocks.end(), [](const TimeBlock& block) {
-        return block.source == BlockSource::Auto;
+        return block.source == BlockSource::Auto && !block.completedAt.isValid();
     }), blocks.end());
     return blocks;
 }
@@ -466,7 +485,7 @@ bool TimeBlockRepository::replaceAutoBlocks(const ScheduleWindow& window, const 
     }
 
     QSqlQuery remove(db);
-    remove.prepare(QStringLiteral("DELETE FROM time_blocks WHERE source = ? AND end_time > ? AND start_time < ?"));
+    remove.prepare(QStringLiteral("DELETE FROM time_blocks WHERE source = ? AND completed_at IS NULL AND end_time > ? AND start_time < ?"));
     remove.addBindValue(static_cast<int>(BlockSource::Auto));
     remove.addBindValue(toIso(window.start));
     remove.addBindValue(toIso(window.end));
@@ -477,8 +496,8 @@ bool TimeBlockRepository::replaceAutoBlocks(const ScheduleWindow& window, const 
 
     QSqlQuery insert(db);
     insert.prepare(QStringLiteral(R"SQL(
-        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, explanation, created_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, explanation, completed_at, created_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
     )SQL"));
     for (const auto& block : blocks) {
         insert.addBindValue(block.taskId);
@@ -487,6 +506,7 @@ bool TimeBlockRepository::replaceAutoBlocks(const ScheduleWindow& window, const 
         insert.addBindValue(static_cast<int>(block.source));
         insert.addBindValue(scheduleRunId);
         insert.addBindValue(block.explanation);
+        insert.addBindValue(block.completedAt.isValid() ? QVariant(toIso(block.completedAt)) : QVariant());
         insert.addBindValue(toIso(QDateTime::currentDateTime()));
         if (!insert.exec()) {
             db.rollback();
@@ -505,8 +525,8 @@ int TimeBlockRepository::createBlock(const TimeBlock& block) const
 
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
-        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, explanation, created_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, explanation, completed_at, created_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
     )SQL"));
     query.addBindValue(block.taskId);
     query.addBindValue(toIso(block.start));
@@ -514,6 +534,7 @@ int TimeBlockRepository::createBlock(const TimeBlock& block) const
     query.addBindValue(static_cast<int>(block.source));
     query.addBindValue(block.scheduleRunId);
     query.addBindValue(block.explanation);
+    query.addBindValue(block.completedAt.isValid() ? QVariant(toIso(block.completedAt)) : QVariant());
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     if (!query.exec()) {
         return 0;
@@ -649,4 +670,73 @@ bool TimeBlockRepository::setBlockSource(int blockId, BlockSource source) const
     query.addBindValue(static_cast<int>(source));
     query.addBindValue(blockId);
     return query.exec() && query.numRowsAffected() == 1;
+}
+
+bool TimeBlockRepository::completeBlock(int blockId) const
+{
+    if (blockId <= 0) {
+        return false;
+    }
+
+    QSqlDatabase db = m_db;
+    if (!db.transaction()) {
+        return false;
+    }
+
+    QSqlQuery blockQuery(db);
+    blockQuery.prepare(QStringLiteral("SELECT task_id FROM time_blocks WHERE id = ?"));
+    blockQuery.addBindValue(blockId);
+    if (!blockQuery.exec() || !blockQuery.next()) {
+        db.rollback();
+        return false;
+    }
+
+    const int taskId = blockQuery.value(0).toInt();
+    const QString now = toIso(QDateTime::currentDateTime());
+    QSqlQuery updateBlock(db);
+    updateBlock.prepare(QStringLiteral("UPDATE time_blocks SET completed_at = ? WHERE id = ?"));
+    updateBlock.addBindValue(now);
+    updateBlock.addBindValue(blockId);
+    if (!updateBlock.exec() || updateBlock.numRowsAffected() != 1) {
+        db.rollback();
+        return false;
+    }
+
+    QSqlQuery totals(db);
+    totals.prepare(QStringLiteral(R"SQL(
+        SELECT t.estimated_minutes,
+               COALESCE(SUM((julianday(b.end_time) - julianday(b.start_time)) * 24 * 60), 0)
+        FROM tasks t
+        LEFT JOIN time_blocks b ON b.task_id = t.id AND b.completed_at IS NOT NULL
+        WHERE t.id = ?
+        GROUP BY t.id, t.estimated_minutes
+    )SQL"));
+    totals.addBindValue(taskId);
+    if (!totals.exec() || !totals.next()) {
+        db.rollback();
+        return false;
+    }
+
+    const int estimatedMinutes = totals.value(0).toInt();
+    const int completedMinutes = qRound(totals.value(1).toDouble());
+    const int remainingMinutes = qMax(0, estimatedMinutes - completedMinutes);
+    const bool taskDone = remainingMinutes <= 0;
+
+    QSqlQuery updateTask(db);
+    updateTask.prepare(QStringLiteral(R"SQL(
+        UPDATE tasks
+        SET status = ?, remaining_minutes = ?, completed_at = ?, updated_at = ?
+        WHERE id = ?
+    )SQL"));
+    updateTask.addBindValue(static_cast<int>(taskDone ? TaskStatus::Done : TaskStatus::Inbox));
+    updateTask.addBindValue(remainingMinutes);
+    updateTask.addBindValue(taskDone ? QVariant(now) : QVariant());
+    updateTask.addBindValue(now);
+    updateTask.addBindValue(taskId);
+    if (!updateTask.exec() || updateTask.numRowsAffected() != 1) {
+        db.rollback();
+        return false;
+    }
+
+    return db.commit();
 }

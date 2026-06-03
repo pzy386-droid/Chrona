@@ -24,6 +24,7 @@ struct TimelineItem {
     int spanDays = 1;
     bool hiddenInSpan = false;
     QString explanation;
+    bool completed = false;
 };
 
 class TimelineModel : public QAbstractListModel {
@@ -51,7 +52,8 @@ public:
         BlockTotalRole,
         SpanDaysRole,
         HiddenInSpanRole,
-        ExplanationRole
+        ExplanationRole,
+        CompletedRole
     };
 
     explicit TimelineModel(QObject* parent = nullptr);

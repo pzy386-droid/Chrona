@@ -214,6 +214,7 @@ Rectangle {
                         event: model.isEvent
                         locked: model.isLocked
                         eventLocked: model.isEventLocked
+                        completed: model.completed
                         selected: model.selected
                         blockOrdinal: model.blockOrdinal
                         blockTotal: model.blockTotal

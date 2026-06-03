@@ -20,6 +20,7 @@ Rectangle {
     property bool event: false
     property bool locked: false
     property bool eventLocked: false
+    property bool completed: false
     readonly property bool lockActive: root.locked || root.eventLocked
 
     property bool selected: false
@@ -50,10 +51,10 @@ Rectangle {
     signal selectedItem(int taskId, int blockId)
 
     radius: 14
-    color: selected ? Qt.darker(accentColor, 1.35) : "#1A1F2B"
+    color: root.completed ? (selected ? "#3A3F4B" : "#262B35") : selected ? Qt.darker(accentColor, 1.35) : "#1A1F2B"
     border.width: selected ? 2 : mouse.containsMouse ? 1 : 0
-    border.color: accentColor
-    opacity: mouse.drag.active ? 0.9 : 1
+    border.color: root.completed ? "#737B8C" : accentColor
+    opacity: mouse.drag.active ? 0.9 : root.completed ? 0.72 : 1
     z: root.resizeActive ? 12 : mouse.drag.active ? 10 : selected ? 4 : 1
     scale: mouse.containsMouse ? 1.02 : 1
 
@@ -70,7 +71,7 @@ Rectangle {
         anchors.bottom: parent.bottom
         width: 6
         radius: 3
-        color: root.accentColor
+        color: root.completed ? "#8A92A3" : root.accentColor
     }
 
     Rectangle {
@@ -78,8 +79,8 @@ Rectangle {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 12
-        color: root.accentColor
-        opacity: mouse.containsMouse ? 0.18 : 0.08
+        color: root.completed ? "#8A92A3" : root.accentColor
+        opacity: root.completed ? (mouse.containsMouse ? 0.16 : 0.1) : mouse.containsMouse ? 0.18 : 0.08
     }
 
     Rectangle {
@@ -162,7 +163,7 @@ Rectangle {
         Text {
             width: parent.width
             text: root.title
-            color: "#FFFFFF"
+            color: root.completed ? "#B4BBC8" : "#FFFFFF"
             font.pixelSize: root.height < 48 ? 12 : 14
             font.weight: Font.DemiBold
             elide: Text.ElideRight
@@ -172,7 +173,7 @@ Rectangle {
             visible: root.height >= 48
             width: parent.width
             text: root.timeRange + (root.blockTotal > 1 ? qsTr(" · %1/%2").arg(root.blockOrdinal).arg(root.blockTotal) : "")
-            color: "#CBD5E1"
+            color: root.completed ? "#9AA3B3" : "#CBD5E1"
             font.pixelSize: 11
             elide: Text.ElideRight
         }
@@ -181,7 +182,7 @@ Rectangle {
             visible: root.height >= 72
             width: parent.width
             text: root.explanation && root.explanation.length > 0 ? root.explanation : root.subtitle
-            color: "#94A3B8"
+            color: root.completed ? "#80899A" : "#94A3B8"
             font.pixelSize: 11
             elide: Text.ElideRight
         }
@@ -252,7 +253,7 @@ Rectangle {
             anchors.verticalCenter: parent.verticalCenter
             height: resizeMouse.containsMouse || root.resizeActive ? 4 : 2
             radius: 2
-            color: root.accentColor
+            color: root.completed ? "#8A92A3" : root.accentColor
             opacity: resizeMouse.containsMouse || root.resizeActive ? 0.78 : 0.28
 
             Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
