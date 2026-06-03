@@ -483,6 +483,11 @@ Rectangle {
                 var savedIdealChunk = root.idealChunkValues[idealChunkPicker.currentIndex]
                 var savedEffort = effortPicker.currentIndex
                 var savedEventLocked = eventLockToggle.checked
+                var originalDayIndex = root.task.blockDayIndex || 0
+                var originalEndDayIndex = root.task.blockEndDayIndex || originalDayIndex
+                var originalStartTime = root.task.blockStartText || ""
+                var originalEndTime = root.task.blockEndText || ""
+                var originalLocked = !!root.task.isLocked
 
                 var startParts = String(savedStartTime).split(":")
                 var endParts = String(savedEndTime).split(":")
@@ -509,13 +514,6 @@ Rectangle {
                     return
                 }
 
-                var moveResult = ScheduleService.scheduleSelectedTaskBlocks(savedDayIndex, savedEndDayIndex, savedStartTime, savedEndTime, savedEventLocked)
-                if (!moveResult.ok) {
-                    statusText.color = "#FFB09B"
-                    statusText.text = moveResult.message || qsTr("移动失败")
-                    return
-                }
-
                 var updateResult = ScheduleService.updateTask(
                     root.task.id,
                     savedTitle,
@@ -531,8 +529,27 @@ Rectangle {
                     savedIdealChunk,
                     savedEffort
                 )
-                statusText.color = updateResult.ok ? "#A9F0C9" : "#FFB09B"
-                statusText.text = updateResult.ok ? qsTr("已保存并移动时间块") : (updateResult.message || qsTr("保存失败"))
+                if (!updateResult.ok) {
+                    statusText.color = "#FFB09B"
+                    statusText.text = updateResult.message || qsTr("保存失败")
+                    return
+                }
+
+                var blockChanged = savedDayIndex !== originalDayIndex
+                    || savedEndDayIndex !== originalEndDayIndex
+                    || savedStartTime !== originalStartTime
+                    || savedEndTime !== originalEndTime
+                    || savedEventLocked !== originalLocked
+
+                if (blockChanged) {
+                    var moveResult = ScheduleService.scheduleSelectedTaskBlocks(savedDayIndex, savedEndDayIndex, savedStartTime, savedEndTime, savedEventLocked)
+                    statusText.color = moveResult.ok ? "#A9F0C9" : "#FFB09B"
+                    statusText.text = moveResult.ok ? qsTr("已保存并重排日历") : (moveResult.message || qsTr("移动失败"))
+                    return
+                }
+
+                statusText.color = "#A9F0C9"
+                statusText.text = qsTr("已保存并重排日历")
             }
         }
     }

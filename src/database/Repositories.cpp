@@ -66,7 +66,7 @@ QVector<Task> TaskRepository::allTasks() const
         SELECT t.id, t.title, t.notes, t.deadline, t.estimated_minutes, t.remaining_minutes,
                t.priority, t.status, t.category_id, c.name, c.color, t.estimated_hours, t.preferred_study_time,
                t.start_date, t.deadline_type, t.auto_schedule_enabled, t.min_chunk_minutes,
-               t.ideal_chunk_minutes, t.effort_level, t.schedule_status
+               t.ideal_chunk_minutes, t.effort_level, t.schedule_status, t.completed_at
         FROM tasks t
         LEFT JOIN categories c ON c.id = t.category_id
         ORDER BY t.status ASC, t.deadline ASC
@@ -98,6 +98,7 @@ QVector<Task> TaskRepository::allTasks() const
         task.idealChunkMinutes = query.value(17).toInt();
         task.effortLevel = query.value(18).toInt();
         task.scheduleStatus = static_cast<ScheduleStatus>(query.value(19).toInt());
+        task.completedAt = fromIso(query.value(20));
         tasks.push_back(task);
     }
     return tasks;
@@ -215,9 +216,11 @@ bool TaskRepository::updateScheduleStatuses(const QVector<int>& scheduledTaskIds
 bool TaskRepository::completeTask(int taskId) const
 {
     QSqlQuery query(m_db);
-    query.prepare(QStringLiteral("UPDATE tasks SET status = ?, remaining_minutes = 0, updated_at = ? WHERE id = ?"));
+    query.prepare(QStringLiteral("UPDATE tasks SET status = ?, remaining_minutes = 0, completed_at = ?, updated_at = ? WHERE id = ?"));
+    const QString now = toIso(QDateTime::currentDateTime());
     query.addBindValue(static_cast<int>(TaskStatus::Done));
-    query.addBindValue(toIso(QDateTime::currentDateTime()));
+    query.addBindValue(now);
+    query.addBindValue(now);
     query.addBindValue(taskId);
     return query.exec();
 }
@@ -406,7 +409,7 @@ QVector<TimeBlock> TimeBlockRepository::blocksBetween(const QDateTime& start, co
     QVector<TimeBlock> blocks;
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
-        SELECT id, task_id, start_time, end_time, source, schedule_run_id, created_at
+        SELECT id, task_id, start_time, end_time, source, schedule_run_id, created_at, explanation
         FROM time_blocks
         WHERE end_time > ? AND start_time < ?
         ORDER BY start_time ASC
@@ -423,6 +426,7 @@ QVector<TimeBlock> TimeBlockRepository::blocksBetween(const QDateTime& start, co
         block.source = static_cast<BlockSource>(query.value(4).toInt());
         block.scheduleRunId = query.value(5).toInt();
         block.createdAt = query.value(6).toString();
+        block.explanation = query.value(7).toString();
         blocks.push_back(block);
     }
     return blocks;
@@ -473,8 +477,8 @@ bool TimeBlockRepository::replaceAutoBlocks(const ScheduleWindow& window, const 
 
     QSqlQuery insert(db);
     insert.prepare(QStringLiteral(R"SQL(
-        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, created_at)
-        VALUES(?, ?, ?, ?, ?, ?)
+        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, explanation, created_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?)
     )SQL"));
     for (const auto& block : blocks) {
         insert.addBindValue(block.taskId);
@@ -482,6 +486,7 @@ bool TimeBlockRepository::replaceAutoBlocks(const ScheduleWindow& window, const 
         insert.addBindValue(toIso(block.end));
         insert.addBindValue(static_cast<int>(block.source));
         insert.addBindValue(scheduleRunId);
+        insert.addBindValue(block.explanation);
         insert.addBindValue(toIso(QDateTime::currentDateTime()));
         if (!insert.exec()) {
             db.rollback();
@@ -500,14 +505,15 @@ int TimeBlockRepository::createBlock(const TimeBlock& block) const
 
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
-        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, created_at)
-        VALUES(?, ?, ?, ?, ?, ?)
+        INSERT INTO time_blocks(task_id, start_time, end_time, source, schedule_run_id, explanation, created_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?)
     )SQL"));
     query.addBindValue(block.taskId);
     query.addBindValue(toIso(block.start));
     query.addBindValue(toIso(block.end));
     query.addBindValue(static_cast<int>(block.source));
     query.addBindValue(block.scheduleRunId);
+    query.addBindValue(block.explanation);
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     if (!query.exec()) {
         return 0;

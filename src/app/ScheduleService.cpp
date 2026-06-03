@@ -78,12 +78,13 @@ QVariantMap parsedDraftToMap(const ParsedTaskDraft& draft, const QString& source
 }
 }
 
-ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, AIService* aiService, QObject* parent)
+ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, SettingsRepository settings, AIService* aiService, QObject* parent)
     : QObject(parent)
     , m_tasks(std::move(tasks))
     , m_calendar(std::move(calendar))
     , m_blocks(std::move(blocks))
     , m_studyFrames(std::move(studyFrames))
+    , m_settings(std::move(settings))
     , m_aiService(aiService)
 {
 }
@@ -171,6 +172,11 @@ QVariantList ScheduleService::scheduleIssues() const
     return m_scheduleIssues;
 }
 
+bool ScheduleService::demoModeEnabled() const
+{
+    return m_settings.value(QStringLiteral("demoModeEnabled"), QStringLiteral("false")) == QStringLiteral("true");
+}
+
 void ScheduleService::reschedule()
 {
     const ScheduleWindow window = currentWindow();
@@ -192,7 +198,12 @@ void ScheduleService::reschedule()
             {"code", issue.code},
             {"reason", issue.reason},
             {"fixHint", issue.fixHint},
-            {"remainingMinutes", issue.remainingMinutes}
+            {"estimatedMinutes", issue.estimatedMinutes},
+            {"scheduledMinutes", issue.scheduledMinutes},
+            {"remainingMinutes", issue.remainingMinutes},
+            {"deadlineText", deadlineText(issue.deadline)},
+            {"priority", issue.priority},
+            {"categoryName", issue.categoryName}
         };
         m_scheduleIssues.push_back(issueMap);
     }
@@ -933,6 +944,90 @@ QVariantMap ScheduleService::previewImageTask(const QString& fileUrlOrPath)
     return m_ocr.previewImage(fileUrlOrPath);
 }
 
+QVariantMap ScheduleService::eveningReview() const
+{
+    const QDate today = QDate::currentDate();
+    const QDateTime dayStart(today, QTime(0, 0));
+    const QDateTime dayEnd(today.addDays(1), QTime(0, 0));
+    const QVector<Task> tasks = m_tasks.allTasks();
+    const QVector<TimeBlock> blocks = m_blocks.blocksBetween(dayStart, dayEnd);
+
+    QHash<int, Task> taskById;
+    QHash<int, int> todayMinutesByTask;
+    int plannedMinutes = 0;
+    for (const auto& task : tasks) {
+        taskById.insert(task.id, task);
+    }
+    for (const auto& block : blocks) {
+        if (block.taskId <= 0 || !taskById.contains(block.taskId)) {
+            continue;
+        }
+        const int minutes = static_cast<int>(block.start.secsTo(block.end) / 60);
+        plannedMinutes += minutes;
+        todayMinutesByTask[block.taskId] += minutes;
+    }
+
+    int completedMinutes = 0;
+    QVariantList completedTasks;
+    QVariantList unfinishedTasks;
+    QVariantList carriedOverTasks;
+    QSet<int> seen;
+    for (auto it = todayMinutesByTask.constBegin(); it != todayMinutesByTask.constEnd(); ++it) {
+        const Task task = taskById.value(it.key());
+        QVariantMap map = taskToMap(task);
+        map.insert(QStringLiteral("todayPlannedMinutes"), it.value());
+        if (task.status == TaskStatus::Done) {
+            completedMinutes += it.value();
+            completedTasks.push_back(map);
+        } else {
+            unfinishedTasks.push_back(map);
+            carriedOverTasks.push_back(map);
+        }
+        seen.insert(task.id);
+    }
+
+    for (const auto& task : tasks) {
+        if (seen.contains(task.id) || task.status == TaskStatus::Done || task.status == TaskStatus::Archived) {
+            continue;
+        }
+        if (task.scheduleStatus == ScheduleStatus::CouldNotFit || task.deadline.date() <= today.addDays(1)) {
+            carriedOverTasks.push_back(taskToMap(task));
+        }
+    }
+
+    const int completionRate = plannedMinutes > 0
+        ? qBound(0, qRound(completedMinutes * 100.0 / plannedMinutes), 100)
+        : 0;
+    const QString summary = plannedMinutes <= 0
+        ? QObject::tr("今天还没有可复盘的计划时间块")
+        : QObject::tr("今日计划 %1 分钟，已完成 %2 分钟，完成率 %3%")
+              .arg(plannedMinutes)
+              .arg(completedMinutes)
+              .arg(completionRate);
+
+    return {
+        {QStringLiteral("dateText"), today.toString(QStringLiteral("yyyy-MM-dd"))},
+        {QStringLiteral("plannedMinutes"), plannedMinutes},
+        {QStringLiteral("completedMinutes"), completedMinutes},
+        {QStringLiteral("completionRate"), completionRate},
+        {QStringLiteral("completedTasks"), completedTasks},
+        {QStringLiteral("unfinishedTasks"), unfinishedTasks},
+        {QStringLiteral("carriedOverTasks"), carriedOverTasks},
+        {QStringLiteral("unfinishedCount"), unfinishedTasks.size()},
+        {QStringLiteral("carriedOverCount"), carriedOverTasks.size()},
+        {QStringLiteral("summary"), summary}
+    };
+}
+
+bool ScheduleService::setDemoModeEnabled(bool enabled)
+{
+    const bool ok = m_settings.setValue(QStringLiteral("demoModeEnabled"), enabled ? QStringLiteral("true") : QStringLiteral("false"));
+    if (ok) {
+        emit dataChanged();
+    }
+    return ok;
+}
+
 ScheduleWindow ScheduleService::currentWindow() const
 {
     const QDate today = QDate::currentDate();
@@ -1048,6 +1143,7 @@ void ScheduleService::rebuildTimeline(const QVector<Task>& tasks, const QVector<
         item.locked = block.source == BlockSource::Locked;
         item.blockOrdinal = blockOrdinalsById.value(block.id, 1);
         item.blockTotal = blockTotalsByTask.value(block.taskId, 1);
+        item.explanation = block.explanation;
         items.push_back(item);
     }
 
@@ -1144,7 +1240,8 @@ QVariantMap ScheduleService::taskToMap(const Task& task) const
         {"idealChunkMinutes", task.idealChunkMinutes},
         {"effortLevel", task.effortLevel},
         {"scheduleStatus", static_cast<int>(task.scheduleStatus)},
-        {"categoryColor", colorForPriority(task.priority, task.categoryColor)}
+        {"categoryColor", colorForPriority(task.priority, task.categoryColor)},
+        {"completedAt", task.completedAt.isValid() ? deadlineText(task.completedAt) : QString()}
     };
 }
 

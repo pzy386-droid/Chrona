@@ -9,7 +9,8 @@ QJsonObject TimeBlock::toJson() const
         {QStringLiteral("endTime"), end.toString(Qt::ISODate)},
         {QStringLiteral("source"), static_cast<int>(source)},
         {QStringLiteral("isLocked"), source == BlockSource::Locked || source == BlockSource::UserDragged},
-        {QStringLiteral("scheduleRunId"), scheduleRunId}
+        {QStringLiteral("scheduleRunId"), scheduleRunId},
+        {QStringLiteral("explanation"), explanation}
     };
 }
 
@@ -24,5 +25,6 @@ TimeBlock TimeBlock::fromJson(const QJsonObject& object)
         ? BlockSource::Locked
         : static_cast<BlockSource>(object.value(QStringLiteral("source")).toInt());
     block.scheduleRunId = object.value(QStringLiteral("scheduleRunId")).toInt();
+    block.explanation = object.value(QStringLiteral("explanation")).toString();
     return block;
 }

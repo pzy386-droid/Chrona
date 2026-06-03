@@ -70,6 +70,7 @@ bool Migrations::run(QSqlDatabase db)
               priority INTEGER NOT NULL,
               status INTEGER NOT NULL,
               category_id INTEGER,
+              completed_at TEXT,
               created_at TEXT NOT NULL,
               updated_at TEXT NOT NULL
             )
@@ -83,6 +84,7 @@ bool Migrations::run(QSqlDatabase db)
         addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("ideal_chunk_minutes"), QStringLiteral("INTEGER NOT NULL DEFAULT 90")) &&
         addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("effort_level"), QStringLiteral("INTEGER NOT NULL DEFAULT 1")) &&
         addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("schedule_status"), QStringLiteral("INTEGER NOT NULL DEFAULT 0")) &&
+        addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("completed_at"), QStringLiteral("TEXT")) &&
         exec(db, QStringLiteral(R"SQL(
             CREATE TABLE IF NOT EXISTS calendar_events (
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,10 +106,12 @@ bool Migrations::run(QSqlDatabase db)
               end_time TEXT NOT NULL,
               source INTEGER NOT NULL,
               schedule_run_id INTEGER,
+              explanation TEXT,
               created_at TEXT NOT NULL,
               FOREIGN KEY(task_id) REFERENCES tasks(id)
             )
         )SQL")) &&
+        addColumnIfMissing(db, QStringLiteral("time_blocks"), QStringLiteral("explanation"), QStringLiteral("TEXT")) &&
         exec(db, QStringLiteral(R"SQL(
             CREATE TABLE IF NOT EXISTS schedule_runs (
               id INTEGER PRIMARY KEY AUTOINCREMENT,

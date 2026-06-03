@@ -24,9 +24,10 @@ class ScheduleService : public QObject {
     Q_PROPERTY(QVariantMap selectedDetail READ selectedDetail NOTIFY selectedTaskChanged)
     Q_PROPERTY(int unscheduledCount READ unscheduledCount NOTIFY dataChanged)
     Q_PROPERTY(QVariantList scheduleIssues READ scheduleIssues NOTIFY dataChanged)
+    Q_PROPERTY(bool demoModeEnabled READ demoModeEnabled NOTIFY dataChanged)
 
 public:
-    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, AIService* aiService = nullptr, QObject* parent = nullptr);
+    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, SettingsRepository settings, AIService* aiService = nullptr, QObject* parent = nullptr);
 
     QObject* timelineModel();
     QObject* taskModel();
@@ -37,6 +38,7 @@ public:
     QVariantMap selectedDetail() const;
     int unscheduledCount() const;
     QVariantList scheduleIssues() const;
+    bool demoModeEnabled() const;
 
     Q_INVOKABLE void reschedule();
     Q_INVOKABLE void selectTask(int taskId);
@@ -64,6 +66,8 @@ public:
     Q_INVOKABLE QVariantMap createTaskFromDraft(const QVariantMap& draft);
     Q_INVOKABLE QVariantMap quickAdd(const QString& input);
     Q_INVOKABLE QVariantMap previewImageTask(const QString& fileUrlOrPath);
+    Q_INVOKABLE QVariantMap eveningReview() const;
+    Q_INVOKABLE bool setDemoModeEnabled(bool enabled);
 
 signals:
     void dataChanged();
@@ -82,6 +86,7 @@ private:
     CalendarRepository m_calendar;
     TimeBlockRepository m_blocks;
     StudyFrameRepository m_studyFrames;
+    SettingsRepository m_settings;
     TaskScheduler m_scheduler;
     ConflictResolver m_conflicts;
     NLPTaskParser m_parser;

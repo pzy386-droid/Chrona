@@ -13,7 +13,7 @@ Rectangle {
     signal focusStopRequested()
     signal rescheduleRequested()
 
-    height: 104
+    height: root.unscheduledCount > 0 ? 150 : 104
     radius: 8
     color: "#161A23"
     border.width: 1
@@ -67,56 +67,68 @@ Rectangle {
             color: "#2A1D1B"
             border.color: "#FF7A59"
             border.width: 1
-            Layout.preferredWidth: 340
-            Layout.preferredHeight: 42
+            Layout.preferredWidth: 390
+            Layout.preferredHeight: 104
 
-            RowLayout {
+            ColumnLayout {
                 anchors.fill: parent
-                anchors.leftMargin: 12
-                anchors.rightMargin: 6
-                spacing: 8
+                anchors.margins: 10
+                spacing: 6
 
-                Text {
+                RowLayout {
                     Layout.fillWidth: true
-                    text: {
-                        if (root.scheduleIssues && root.scheduleIssues.length > 0) {
-                            var issue = root.scheduleIssues[0]
-                            return qsTr("调度冲突 · %1，剩余 %2 分钟未安排")
-                                .arg(issue.title || qsTr("任务"))
-                                .arg(issue.remainingMinutes || 0)
-                        }
-                        return qsTr("调度冲突 · %1 个任务待处理").arg(root.unscheduledCount)
-                    }
-                    color: "#FFB09B"
-                    font.pixelSize: 11
-                    maximumLineCount: 2
-                    elide: Text.ElideRight
-                    wrapMode: Text.WordWrap
-                    verticalAlignment: Text.AlignVCenter
-                }
-
-                Rectangle {
-                    Layout.preferredWidth: 78
-                    Layout.preferredHeight: 30
-                    radius: 7
-                    color: conflictMouse.containsMouse ? "#3A2824" : "#11151D"
-                    border.width: 1
-                    border.color: "#684033"
 
                     Text {
-                        anchors.centerIn: parent
-                        text: qsTr("重规划")
-                        color: "#E6EAF2"
+                        Layout.fillWidth: true
+                        text: qsTr("调度冲突 · %1 个任务").arg(root.unscheduledCount)
+                        color: "#FFB09B"
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
                     }
 
-                    MouseArea {
-                        id: conflictMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: root.rescheduleRequested()
+                    Rectangle {
+                        Layout.preferredWidth: 70
+                        Layout.preferredHeight: 26
+                        radius: 7
+                        color: conflictMouse.containsMouse ? "#3A2824" : "#11151D"
+                        border.width: 1
+                        border.color: "#684033"
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: qsTr("重规划")
+                            color: "#E6EAF2"
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                        }
+
+                        MouseArea {
+                            id: conflictMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: root.rescheduleRequested()
+                        }
+                    }
+                }
+
+                ListView {
+                    Layout.fillWidth: true
+                    Layout.fillHeight: true
+                    clip: true
+                    spacing: 4
+                    model: root.scheduleIssues || []
+
+                    delegate: Text {
+                        width: ListView.view.width
+                        text: qsTr("%1 · 剩余 %2 分钟 · %3 · %4")
+                            .arg(modelData.title || qsTr("任务"))
+                            .arg(modelData.remainingMinutes || 0)
+                            .arg(modelData.reason || qsTr("容量不足"))
+                            .arg(modelData.fixHint || qsTr("调整截止时间或减少时长"))
+                        color: "#FFD2C5"
+                        font.pixelSize: 10
+                        elide: Text.ElideRight
                     }
                 }
             }

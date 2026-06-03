@@ -204,6 +204,7 @@ Rectangle {
                         taskId: model.taskId
                         title: model.title
                         subtitle: model.subtitle
+                        explanation: model.explanation
                         timeRange: model.timeRange
                         dayIndex: root.viewMode === "week" ? model.dayIndex : 0
                         startMinute: model.startMinute

@@ -10,6 +10,7 @@ Rectangle {
     property string title: ""
     property string subtitle: ""
     property string timeRange: ""
+    property string explanation: ""
     property int dayIndex: 0
     property int startMinute: 0
     property int durationMinutes: 0
@@ -179,7 +180,7 @@ Rectangle {
         Text {
             visible: root.height >= 72
             width: parent.width
-            text: root.subtitle
+            text: root.explanation && root.explanation.length > 0 ? root.explanation : root.subtitle
             color: "#94A3B8"
             font.pixelSize: 11
             elide: Text.ElideRight
