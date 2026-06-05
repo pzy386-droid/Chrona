@@ -7,6 +7,7 @@ Rectangle {
     id: root
 
     property bool collapsed: false
+    property var scrollToFocus: null
 
     color: "#0B0E14"
 
@@ -65,9 +66,9 @@ Rectangle {
 
             Repeater {
                 model: [
-                    {label: qsTr("时间轴"), mark: "#6C63FF"},
-                    {label: qsTr("当前专注"), mark: "#00D68F"},
-                    {label: qsTr("课程"), mark: "#FFB547"}
+                    {label: qsTr("时间轴"), mark: "#6C63FF", action: "timeline"},
+                    {label: qsTr("当前专注"), mark: "#00D68F", action: "focus"},
+                    {label: qsTr("课程"), mark: "#FFB547", action: "courses"}
                 ]
 
                 delegate: Rectangle {
@@ -88,6 +89,12 @@ Rectangle {
                         id: hover
                         anchors.fill: parent
                         hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: {
+                            if (modelData.action === "focus" && root.scrollToFocus) {
+                                root.scrollToFocus()
+                            }
+                        }
                     }
 
                     RowLayout {

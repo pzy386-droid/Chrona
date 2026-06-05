@@ -1,7 +1,11 @@
-import QtQuick
-import QtQuick.Controls
-import QtQuick.Layouts
-import Chrona
+import
+ QtQuick
+import
+ QtQuick.Controls
+import
+ QtQuick.Layouts
+import
+ Chrona
 
 Item {
     id: root
@@ -36,6 +40,83 @@ Item {
     function requestEndFocus() {
         if (root.focusActive) {
             focusExitConfirmPopup.open()
+        }
+    }
+
+    function scrollToFocusBlock() {
+        var focusItem = ScheduleService.focusItem
+        if (!focusItem || !focusItem.taskId || focusItem.taskId <= 0) {
+            console.log("No focus item available"
+)
+            return
+        }
+
+        console.log("Scrolling to focus block for task:",
+ focusItem.taskId)
+        ScheduleService.selectTask(focusItem.taskId)
+
+        if (!timelineView) {
+            console.log("timelineView not found"
+)
+            return
+        }
+
+        var blockId = focusItem.blockId || 0
+        var model = ScheduleService.timelineModel
+
+        if (!model) {
+            console.log("Timeline model not found"
+)
+            return
+        }
+
+        var count = model.rowCount()
+        var targetY = 8 * 60 * root.timelineMinuteHeight
+
+        var IdRole = 257
+        var TaskIdRole = 258
+        var DayIndexRole = 264
+        var StartMinuteRole = 265
+
+        for (var i = 0; i < count; i++) {
+            try {
+                var index = model.index(i,
+ 0)
+                var itemId = model.data(index,
+ IdRole)
+                var itemDayIndex = model.data(index,
+ DayIndexRole)
+                var itemStartMinute = model.data(index,
+ StartMinuteRole)
+                var itemTaskId = model.data(index,
+ TaskIdRole)
+
+                var isCurrentView = root.viewMode === "week"
+                    ? (itemDayIndex >= 0 && itemDayIndex < 7)
+                    : (itemDayIndex === 0)
+
+                if (isCurrentView && (itemId === blockId || (blockId === 0 && itemTaskId === focusItem.taskId))) {
+                    targetY = (itemStartMinute - timelineView.dayStartMinute) * root.timelineMinuteHeight
+                    console.log("Found block at Y:",
+ targetY)
+                    break
+                }
+            } catch(e) {
+                console.log("Error accessing model data at index", i, ":",
+ e)
+            }
+        }
+
+        var flickable = timelineView.flickable
+        if (flickable) {
+            var targetContentY = Math.max(0,
+ targetY - flickable.height / 3)
+            console.log("Scrolling to Y:",
+ targetContentY)
+            flickable.contentY = targetContentY
+        } else {
+            console.log("Flickable not found"
+)
         }
     }
 

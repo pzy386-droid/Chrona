@@ -14,6 +14,12 @@ ApplicationWindow {
 
     property bool detailOpen: true
 
+    function scrollToFocusBlock() {
+        if (timelinePage && typeof timelinePage.scrollToFocusBlock === 'function') {
+            timelinePage.scrollToFocusBlock()
+        }
+    }
+
     Connections {
         target: ScheduleService
 
@@ -34,6 +40,7 @@ ApplicationWindow {
                 id: sidebar
                 Layout.fillHeight: true
                 Layout.preferredWidth: collapsed ? 76 : 248
+                scrollToFocus: window.scrollToFocusBlock
 
                 Behavior on Layout.preferredWidth {
                     NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
@@ -41,6 +48,7 @@ ApplicationWindow {
             }
 
             TimelinePage {
+                id: timelinePage
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 leftPadding: 24

@@ -17,6 +17,7 @@ Rectangle {
     readonly property int headerHeight: 44
     readonly property real dayColumnWidth: viewMode === "week" ? requestedDayColumnWidth : Math.max(320, width - rulerWidth)
     readonly property real timelineWidth: rulerWidth + dayCount * dayColumnWidth
+    property alias flickable: flick
 
     radius: 8
     color: "#11151D"
