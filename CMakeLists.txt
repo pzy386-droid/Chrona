@@ -44,6 +44,8 @@ qt_add_executable(Chrona
     src/core/scheduler/TimeBlockGenerator.h
     src/database/Database.cpp
     src/database/Database.h
+    src/database/BackupService.cpp
+    src/database/BackupService.h
     src/database/Migrations.cpp
     src/database/Migrations.h
     src/database/Repositories.cpp
@@ -101,4 +103,22 @@ target_link_libraries(Chrona PRIVATE
 
 if(WIN32)
     set_target_properties(Chrona PROPERTIES WIN32_EXECUTABLE TRUE)
+endif()
+
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+    qt_add_executable(ChronaDatabaseTests
+        tests/DatabaseConsistencyTests.cpp
+        src/database/BackupService.cpp
+        src/database/BackupService.h
+        src/database/Migrations.cpp
+        src/database/Migrations.h
+        src/database/Repositories.cpp
+        src/database/Repositories.h
+    )
+
+    target_include_directories(ChronaDatabaseTests PRIVATE src)
+    target_link_libraries(ChronaDatabaseTests PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
+    add_test(NAME ChronaDatabaseTests COMMAND ChronaDatabaseTests)
 endif()

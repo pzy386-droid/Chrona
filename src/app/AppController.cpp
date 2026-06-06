@@ -24,7 +24,9 @@ bool AppController::initialize(QQmlApplicationEngine* engine)
     m_localeService = std::make_unique<LocaleService>(SettingsRepository(db));
     const QString deepSeekKey = QProcessEnvironment::systemEnvironment().value(QStringLiteral("DEEPSEEK_API_KEY"));
     m_aiService = std::make_unique<DeepSeekProvider>(deepSeekKey);
-    m_scheduleService = std::make_unique<ScheduleService>(TaskRepository(db), CalendarRepository(db), TimeBlockRepository(db), StudyFrameRepository(db), SettingsRepository(db), m_aiService.get());
+    m_scheduleService = std::make_unique<ScheduleService>(
+        TaskRepository(db), CalendarRepository(db), TimeBlockRepository(db),
+        StudyFrameRepository(db), SettingsRepository(db), BackupService(db), m_aiService.get());
 
     engine->rootContext()->setContextProperty(QStringLiteral("LocaleService"), m_localeService.get());
     engine->rootContext()->setContextProperty(QStringLiteral("ScheduleService"), m_scheduleService.get());

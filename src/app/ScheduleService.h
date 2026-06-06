@@ -6,6 +6,7 @@
 #include "core/scheduler/ConflictResolver.h"
 #include "core/scheduler/TaskScheduler.h"
 #include "database/Repositories.h"
+#include "database/BackupService.h"
 #include "managers/NLPTaskParser.h"
 #include "managers/OCRManager.h"
 
@@ -25,9 +26,12 @@ class ScheduleService : public QObject {
     Q_PROPERTY(int unscheduledCount READ unscheduledCount NOTIFY dataChanged)
     Q_PROPERTY(QVariantList scheduleIssues READ scheduleIssues NOTIFY dataChanged)
     Q_PROPERTY(bool demoModeEnabled READ demoModeEnabled NOTIFY dataChanged)
+    Q_PROPERTY(QString persistenceError READ persistenceError NOTIFY dataChanged)
 
 public:
-    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, SettingsRepository settings, AIService* aiService = nullptr, QObject* parent = nullptr);
+    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks,
+                    StudyFrameRepository studyFrames, SettingsRepository settings, BackupService backup,
+                    AIService* aiService = nullptr, QObject* parent = nullptr);
 
     QObject* timelineModel();
     QObject* taskModel();
@@ -39,6 +43,7 @@ public:
     int unscheduledCount() const;
     QVariantList scheduleIssues() const;
     bool demoModeEnabled() const;
+    QString persistenceError() const;
 
     Q_INVOKABLE void reschedule();
     Q_INVOKABLE void selectTask(int taskId);
@@ -51,6 +56,7 @@ public:
                                        const QString& categoryName, const QString& preferredStudyTime, bool autoScheduleEnabled, int deadlineType,
                                        int minChunkMinutes, int idealChunkMinutes, int effortLevel);
     Q_INVOKABLE QVariantMap deleteTask(int taskId);
+    Q_INVOKABLE QVariantMap updateCategoryColor(const QString& categoryName, const QString& color);
     Q_INVOKABLE QVariantMap addFixedEvent(const QString& title, int dayOffset, int startMinute, int durationMinutes, bool locked, const QString& categoryName);
     Q_INVOKABLE QVariantMap addStudyFrame(const QString& name, int dayIndex, const QString& startText, const QString& endText, const QString& categoryName, const QString& energyLevel);
     Q_INVOKABLE bool setStudyFrameEnabled(int frameId, bool enabled);
@@ -69,6 +75,8 @@ public:
     Q_INVOKABLE QVariantMap previewImageTask(const QString& fileUrlOrPath);
     Q_INVOKABLE QVariantMap eveningReview() const;
     Q_INVOKABLE bool setDemoModeEnabled(bool enabled);
+    Q_INVOKABLE QVariantMap exportData(const QString& filePath);
+    Q_INVOKABLE QVariantMap importData(const QString& filePath);
 
 signals:
     void dataChanged();
@@ -88,6 +96,7 @@ private:
     TimeBlockRepository m_blocks;
     StudyFrameRepository m_studyFrames;
     SettingsRepository m_settings;
+    BackupService m_backup;
     TaskScheduler m_scheduler;
     ConflictResolver m_conflicts;
     NLPTaskParser m_parser;
@@ -102,4 +111,5 @@ private:
     QVector<int> m_unscheduledTaskIds;
     int m_selectedTaskId = 0;
     int m_selectedBlockId = 0;
+    QString m_persistenceError;
 };

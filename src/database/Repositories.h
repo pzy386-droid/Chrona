@@ -6,6 +6,7 @@
 #include "core/models/TimeBlock.h"
 
 #include <QSqlDatabase>
+#include <QString>
 
 class SettingsRepository {
 public:
@@ -24,13 +25,16 @@ public:
     QVector<Task> allTasks() const;
     bool createTask(const Task& task, const QString& categoryName) const;
     bool updateTask(const Task& task, const QString& categoryName) const;
+    bool updateCategoryColor(const QString& categoryName, const QString& color) const;
     bool updateScheduleStatuses(const QVector<int>& scheduledTaskIds, const QVector<int>& couldNotFitTaskIds) const;
     bool completeTask(int taskId) const;
     bool deleteTask(int taskId) const;
+    QString lastError() const;
 
 private:
     int ensureCategory(const QString& name) const;
     QSqlDatabase m_db;
+    mutable QString m_lastError;
 };
 
 class CalendarRepository {
@@ -41,10 +45,14 @@ public:
     bool updateEvent(const CalendarEvent& event, const QString& categoryName) const;
     bool setEventLocked(int eventId, bool locked) const;
     bool moveEvent(int eventId, const QDateTime& start, const QDateTime& end) const;
+    bool upsertEvents(const QVector<CalendarEvent>& events, const QString& categoryName,
+                      const QVector<int>& removeEventIds = {}, QVector<int>* eventIds = nullptr) const;
+    QString lastError() const;
 
 private:
     int ensureCategory(const QString& name) const;
     QSqlDatabase m_db;
+    mutable QString m_lastError;
 };
 
 class TimeBlockRepository {
@@ -58,9 +66,16 @@ public:
     bool moveBlock(int blockId, const QDateTime& start, const QDateTime& end) const;
     bool setBlockSource(int blockId, BlockSource source) const;
     bool completeBlock(int blockId) const;
+    bool upsertBlocks(const QVector<TimeBlock>& blocks, const QVector<int>& removeBlockIds = {},
+                      QVector<int>* blockIds = nullptr) const;
+    bool commitSchedule(const ScheduleWindow& window, const QVector<TimeBlock>& blocks,
+                        const QVector<int>& scheduledTaskIds, const QVector<int>& couldNotFitTaskIds,
+                        const QString& reason, int* scheduleRunId = nullptr) const;
+    QString lastError() const;
 
 private:
     QSqlDatabase m_db;
+    mutable QString m_lastError;
 };
 
 class StudyFrameRepository {

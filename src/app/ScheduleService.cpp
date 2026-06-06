@@ -78,13 +78,16 @@ QVariantMap parsedDraftToMap(const ParsedTaskDraft& draft, const QString& source
 }
 }
 
-ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks, StudyFrameRepository studyFrames, SettingsRepository settings, AIService* aiService, QObject* parent)
+ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks,
+                                 StudyFrameRepository studyFrames, SettingsRepository settings, BackupService backup,
+                                 AIService* aiService, QObject* parent)
     : QObject(parent)
     , m_tasks(std::move(tasks))
     , m_calendar(std::move(calendar))
     , m_blocks(std::move(blocks))
     , m_studyFrames(std::move(studyFrames))
     , m_settings(std::move(settings))
+    , m_backup(std::move(backup))
     , m_aiService(aiService)
 {
 }
@@ -177,6 +180,11 @@ bool ScheduleService::demoModeEnabled() const
     return m_settings.value(QStringLiteral("demoModeEnabled"), QStringLiteral("false")) == QStringLiteral("true");
 }
 
+QString ScheduleService::persistenceError() const
+{
+    return m_persistenceError;
+}
+
 void ScheduleService::reschedule()
 {
     const ScheduleWindow window = currentWindow();
@@ -186,9 +194,13 @@ void ScheduleService::reschedule()
     const QVector<Task> tasks = subtractLockedBlockCapacity(m_tasks.activeTasks(), locked);
 
     const ScheduleResult result = m_scheduler.generateSchedule(tasks, events, locked, frames, window, m_config);
-    const int runId = m_blocks.createScheduleRun(window, QStringLiteral("manual_or_startup"));
-    m_blocks.replaceAutoBlocks(window, result.generatedBlocks, runId);
-    m_tasks.updateScheduleStatuses(result.scheduledTaskIds, result.unscheduledTaskIds);
+    if (!m_blocks.commitSchedule(window, result.generatedBlocks, result.scheduledTaskIds,
+                                 result.unscheduledTaskIds, QStringLiteral("manual_or_startup"))) {
+        m_persistenceError = m_blocks.lastError();
+        reload();
+        return;
+    }
+    m_persistenceError.clear();
     m_unscheduledTaskIds = result.unscheduledTaskIds;
     m_scheduleIssues.clear();
     for (const auto& issue : result.issues) {
@@ -326,7 +338,7 @@ QVariantMap ScheduleService::updateTask(int taskId, const QString& title, const 
     task.preferredStudyTime = preferredStudyTime.trimmed().isEmpty() ? QStringLiteral("evening") : preferredStudyTime.trimmed();
 
     if (!m_tasks.updateTask(task, categoryName)) {
-        return {{"ok", false}, {"message", QObject::tr("任务更新失败")}};
+        return {{"ok", false}, {"message", QObject::tr("任务更新失败：%1").arg(m_tasks.lastError())}};
     }
 
     const int previousBlockId = m_selectedBlockId;
@@ -354,6 +366,18 @@ QVariantMap ScheduleService::deleteTask(int taskId)
     return {{"ok", true}, {"message", QObject::tr("任务已删除")}};
 }
 
+QVariantMap ScheduleService::updateCategoryColor(const QString& categoryName, const QString& color)
+{
+    if (!m_tasks.updateCategoryColor(categoryName, color)) {
+        return {
+            {"ok", false},
+            {"message", QObject::tr("分类颜色更新失败：%1").arg(m_tasks.lastError())}
+        };
+    }
+    reload();
+    return {{"ok", true}, {"message", QObject::tr("分类颜色已更新")}};
+}
+
 QVariantMap ScheduleService::addFixedEvent(const QString& title, int dayOffset, int startMinute, int durationMinutes, bool locked, const QString& categoryName)
 {
     const QString trimmedTitle = title.trimmed();
@@ -376,7 +400,7 @@ QVariantMap ScheduleService::addFixedEvent(const QString& title, int dayOffset, 
         return {{"ok", false}, {"message", QObject::tr("这个时间段已有安排")}};
     }
     if (!m_calendar.createEvent(event, categoryName)) {
-        return {{"ok", false}, {"message", QObject::tr("固定时间创建失败")}};
+        return {{"ok", false}, {"message", QObject::tr("固定时间创建失败：%1").arg(m_calendar.lastError())}};
     }
 
     reschedule();
@@ -418,7 +442,7 @@ QVariantMap ScheduleService::updateSelectedEvent(const QString& title, int dayIn
         return {{"ok", false}, {"message", QObject::tr("这个时间段已有安排")}};
     }
     if (!m_calendar.updateEvent(event, categoryName)) {
-        return {{"ok", false}, {"message", QObject::tr("固定时间更新失败")}};
+        return {{"ok", false}, {"message", QObject::tr("固定时间更新失败：%1").arg(m_calendar.lastError())}};
     }
 
     reschedule();
@@ -505,10 +529,10 @@ QVariantMap ScheduleService::scheduleSelectedEventBlocks(const QString& title, i
         if (event.title.trimmed() != trimmedTitle) {
             continue;
         }
+        editableEventIds.insert(event.id);
         const int dayIndex = static_cast<int>(window.start.date().daysTo(event.start.date()));
         if (dayIndex >= firstDay && dayIndex <= lastDay && !reusableEventByDay.contains(dayIndex)) {
             reusableEventByDay.insert(dayIndex, event.id);
-            editableEventIds.insert(event.id);
         }
     }
 
@@ -547,24 +571,33 @@ QVariantMap ScheduleService::scheduleSelectedEventBlocks(const QString& title, i
         planned.push_back({event.id, event});
     }
 
-    int selectedEventId = 0;
+    QVector<CalendarEvent> eventsToSave;
+    eventsToSave.reserve(planned.size());
     for (const auto& plannedEvent : planned) {
-        int eventId = plannedEvent.existingId;
         CalendarEvent event = plannedEvent.event;
-        if (eventId > 0) {
-            event.id = eventId;
-            if (!m_calendar.updateEvent(event, categoryName)) {
-                return {{"ok", false}, {"message", QObject::tr("连续固定时间更新失败")}};
-            }
-        } else {
-            if (!m_calendar.createEvent(event, categoryName)) {
-                return {{"ok", false}, {"message", QObject::tr("连续固定时间创建失败")}};
-            }
-        }
-        if (selectedEventId == 0) {
-            selectedEventId = eventId > 0 ? eventId : currentEventId;
+        event.id = plannedEvent.existingId;
+        eventsToSave.push_back(event);
+    }
+    QVector<int> savedEventIds;
+    QSet<int> reusedEventIds;
+    for (const CalendarEvent& event : eventsToSave) {
+        if (event.id > 0) {
+            reusedEventIds.insert(event.id);
         }
     }
+    QVector<int> removedEventIds;
+    for (int eventId : editableEventIds) {
+        if (!reusedEventIds.contains(eventId)) {
+            removedEventIds.push_back(eventId);
+        }
+    }
+    if (!m_calendar.upsertEvents(eventsToSave, categoryName, removedEventIds, &savedEventIds)) {
+        return {
+            {"ok", false},
+            {"message", QObject::tr("连续固定时间保存失败：%1").arg(m_calendar.lastError())}
+        };
+    }
+    const int selectedEventId = savedEventIds.isEmpty() ? 0 : savedEventIds.first();
 
     reschedule();
     if (selectedEventId > 0) {
@@ -784,13 +817,13 @@ QVariantMap ScheduleService::scheduleSelectedTaskBlocks(int startDayIndex, int e
             editableBlockIds.insert(block.id);
             continue;
         }
-        if (block.taskId != m_selectedTaskId) {
+        if (block.taskId != m_selectedTaskId || block.source == BlockSource::Auto) {
             continue;
         }
+        editableBlockIds.insert(block.id);
         const int dayIndex = static_cast<int>(window.start.date().daysTo(block.start.date()));
         if (dayIndex >= firstDay && dayIndex <= lastDay && !reusableBlockByDay.contains(dayIndex)) {
             reusableBlockByDay.insert(dayIndex, block.id);
-            editableBlockIds.insert(block.id);
         }
     }
 
@@ -830,29 +863,37 @@ QVariantMap ScheduleService::scheduleSelectedTaskBlocks(int startDayIndex, int e
         planned.push_back({reusableBlockByDay.value(dayIndex, 0), blockStart, blockEnd});
     }
 
-    int selectedBlockId = 0;
+    QVector<TimeBlock> blocksToSave;
+    blocksToSave.reserve(planned.size());
     for (const auto& block : planned) {
-        int blockId = block.existingId;
-        if (blockId > 0) {
-            if (!m_blocks.moveBlock(blockId, block.start, block.end)
-                || !m_blocks.setBlockSource(blockId, locked ? BlockSource::Locked : BlockSource::UserDragged)) {
-                return {{"ok", false}, {"message", QObject::tr("连续时间块更新失败")}};
-            }
-        } else {
-            TimeBlock created;
-            created.taskId = m_selectedTaskId;
-            created.start = block.start;
-            created.end = block.end;
-            created.source = locked ? BlockSource::Locked : BlockSource::UserDragged;
-            blockId = m_blocks.createBlock(created);
-            if (blockId <= 0) {
-                return {{"ok", false}, {"message", QObject::tr("连续时间块创建失败")}};
-            }
-        }
-        if (selectedBlockId == 0) {
-            selectedBlockId = blockId;
+        TimeBlock saved;
+        saved.id = block.existingId;
+        saved.taskId = m_selectedTaskId;
+        saved.start = block.start;
+        saved.end = block.end;
+        saved.source = locked ? BlockSource::Locked : BlockSource::UserDragged;
+        blocksToSave.push_back(saved);
+    }
+    QVector<int> savedBlockIds;
+    QSet<int> reusedBlockIds;
+    for (const TimeBlock& block : blocksToSave) {
+        if (block.id > 0) {
+            reusedBlockIds.insert(block.id);
         }
     }
+    QVector<int> removedBlockIds;
+    for (int blockId : editableBlockIds) {
+        if (!reusedBlockIds.contains(blockId)) {
+            removedBlockIds.push_back(blockId);
+        }
+    }
+    if (!m_blocks.upsertBlocks(blocksToSave, removedBlockIds, &savedBlockIds)) {
+        return {
+            {"ok", false},
+            {"message", QObject::tr("连续时间块保存失败：%1").arg(m_blocks.lastError())}
+        };
+    }
+    const int selectedBlockId = savedBlockIds.isEmpty() ? 0 : savedBlockIds.first();
 
     const int selectedTaskId = m_selectedTaskId;
     reschedule();
@@ -941,7 +982,7 @@ QVariantMap ScheduleService::createTaskFromDraft(const QVariantMap& draft)
         categoryName = QObject::tr("学习");
     }
     if (!m_tasks.createTask(task, categoryName)) {
-        return {{"ok", false}, {"message", QObject::tr("任务创建失败")}};
+        return {{"ok", false}, {"message", QObject::tr("任务创建失败：%1").arg(m_tasks.lastError())}};
     }
 
     reschedule();
@@ -1052,6 +1093,34 @@ bool ScheduleService::setDemoModeEnabled(bool enabled)
         emit dataChanged();
     }
     return ok;
+}
+
+QVariantMap ScheduleService::exportData(const QString& filePath)
+{
+    if (!m_backup.exportToFile(filePath)) {
+        return {
+            {"ok", false},
+            {"message", QObject::tr("数据导出失败：%1").arg(m_backup.lastError())}
+        };
+    }
+    return {{"ok", true}, {"message", QObject::tr("数据已导出")}};
+}
+
+QVariantMap ScheduleService::importData(const QString& filePath)
+{
+    if (!m_backup.importFromFile(filePath)) {
+        return {
+            {"ok", false},
+            {"message", QObject::tr("数据导入失败：%1").arg(m_backup.lastError())}
+        };
+    }
+    m_selectedTaskId = 0;
+    m_selectedBlockId = 0;
+    m_unscheduledTaskIds.clear();
+    m_scheduleIssues.clear();
+    m_persistenceError.clear();
+    reload();
+    return {{"ok", true}, {"message", QObject::tr("数据已导入")}};
 }
 
 ScheduleWindow ScheduleService::currentWindow() const
