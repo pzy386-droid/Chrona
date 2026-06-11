@@ -17,6 +17,14 @@ Rectangle {
     readonly property int headerHeight: 44
     readonly property real dayColumnWidth: viewMode === "week" ? requestedDayColumnWidth : Math.max(320, width - rulerWidth)
     readonly property real timelineWidth: rulerWidth + dayCount * dayColumnWidth
+    signal timelineMessage(string kind, string message)
+
+    function clockText(minute) {
+        var clamped = Math.max(0, Math.min(24 * 60, minute))
+        var hour = Math.floor(clamped / 60)
+        var min = clamped % 60
+        return String(hour).padStart(2, "0") + ":" + String(min).padStart(2, "0")
+    }
 
     radius: 8
     color: "#11151D"
@@ -156,6 +164,27 @@ Rectangle {
                     opacity: 0.9
                 }
 
+                MouseArea {
+                    id: emptySlotMouse
+                    anchors.fill: parent
+                    acceptedButtons: Qt.LeftButton
+                    z: 0
+                    onClicked: function(mouse) {
+                        if (mouse.x < root.rulerWidth) {
+                            return
+                        }
+                        var rawDay = (mouse.x - root.rulerWidth) / root.dayColumnWidth
+                        var nextDay = root.viewMode === "week"
+                            ? Math.max(0, Math.min(root.dayCount - 1, Math.floor(rawDay)))
+                            : 0
+                        var rawMinute = root.dayStartMinute + mouse.y / root.minuteHeight
+                        var startMinute = Math.max(root.dayStartMinute, Math.min(root.dayEndMinute - 15, Math.round(rawMinute / 15) * 15))
+                        var duration = Math.min(60, root.dayEndMinute - startMinute)
+                        var result = ScheduleService.createSelectedTaskBlock(nextDay, root.clockText(startMinute), root.clockText(startMinute + duration))
+                        root.timelineMessage(result.ok ? "success" : "danger", result.message || (result.ok ? "Time block created" : "Could not create time block"))
+                    }
+                }
+
                 Repeater {
                     model: root.frameModel
 
@@ -228,12 +257,17 @@ Rectangle {
                         width: Math.max(120, root.dayColumnWidth - 10)
                         height: Math.max(30, (blockDelegate.resizeActive ? blockDelegate.resizePreviewDuration : model.durationMinutes) * root.minuteHeight - 4)
                         onMoveRequested: function(blockId, dayIndex, startMinute, durationMinutes) {
-                            var ok = ScheduleService.moveTimelineItem(blockId, model.isEvent, dayIndex, startMinute, durationMinutes)
-                            if (!ok) {
+                            var result = ScheduleService.moveTimelineItemWithResult(blockId, model.isEvent, dayIndex, startMinute, durationMinutes)
+                            if (!result.ok) {
                                 x = (root.viewMode === "week" ? model.dayIndex : 0) * root.dayColumnWidth + root.rulerWidth + 5
                                 y = (model.startMinute - root.dayStartMinute) * root.minuteHeight
+                                height = Math.max(30, model.durationMinutes * root.minuteHeight - 4)
+                                root.timelineMessage("danger", result.message || "Move failed")
+                            } else if (result.message) {
+                                root.timelineMessage("success", result.message)
                             }
                         }
+                        onActionRejected: function(message) { root.timelineMessage("danger", message) }
                         onSelectedItem: function(taskId, blockId) { ScheduleService.selectTimelineItem(taskId, blockId) }
                     }
                 }

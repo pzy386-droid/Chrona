@@ -1,6 +1,5 @@
 import QtQuick
 import QtQuick.Controls
-import Qt5Compat.GraphicalEffects
 import Chrona
 
 Rectangle {
@@ -36,6 +35,8 @@ Rectangle {
 
     property real pressX: 0
     property real pressY: 0
+    property real pressMouseX: 0
+    property real pressMouseY: 0
     property bool wasDragged: false
 
     property bool readyForResizeAnimation: false
@@ -47,6 +48,7 @@ Rectangle {
 
     signal moveRequested(int blockId, int dayIndex, int startMinute, int durationMinutes)
     signal selectedItem(int taskId, int blockId)
+    signal actionRejected(string message)
 
     radius: 14
     color: event ? "#262D3A" : selected ? Qt.darker(accentColor, 1.35) : "#1A1F2B"
@@ -192,7 +194,7 @@ Rectangle {
         hoverEnabled: true
         acceptedButtons: Qt.LeftButton
         enabled: !root.resizeActive
-        drag.target: root.locked ? null : root
+        drag.target: root.lockActive ? null : root
         drag.axis: Drag.XAndYAxis
         drag.minimumX: root.timelineLeft + root.horizontalInset
         drag.maximumX: root.timelineLeft + Math.max(0, root.dayCount - 1) * root.dayWidth + root.horizontalInset
@@ -202,19 +204,26 @@ Rectangle {
         onPressed: {
             root.pressX = root.x
             root.pressY = root.y
+            root.pressMouseX = mouseX
+            root.pressMouseY = mouseY
             root.wasDragged = false
             ScheduleService.selectTimelineItem(root.taskId, root.blockId)
             root.selectedItem(root.taskId, root.blockId)
         }
 
         onPositionChanged: {
-            if (pressed && (Math.abs(root.x - root.pressX) > 3 || Math.abs(root.y - root.pressY) > 3)) {
+            var movedBlock = Math.abs(root.x - root.pressX) > 3 || Math.abs(root.y - root.pressY) > 3
+            var movedPointer = Math.abs(mouseX - root.pressMouseX) > 3 || Math.abs(mouseY - root.pressMouseY) > 3
+            if (pressed && (movedBlock || movedPointer)) {
                 root.wasDragged = true
             }
         }
 
         onReleased: {
-            if (!root.wasDragged || root.locked) {
+            if (!root.wasDragged || root.lockActive) {
+                if (root.wasDragged && root.lockActive) {
+                    root.actionRejected(root.event ? qsTr("Unlock this fixed time before moving it") : qsTr("Unlock this task block before moving it"))
+                }
                 return
             }
 
@@ -233,7 +242,7 @@ Rectangle {
 
     Rectangle {
         id: resizeHandle
-        visible: !root.event && !root.locked && root.height >= 42
+        visible: !root.lockActive && root.height >= 42
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -310,19 +319,11 @@ Rectangle {
 
         Text {
             anchors.centerIn: parent
-            text: qsTr("%1 分钟").arg(root.resizePreviewDuration)
+            text: qsTr("%1 minutes").arg(root.resizePreviewDuration)
             color: "#E6EAF2"
             font.pixelSize: 11
             font.weight: Font.DemiBold
         }
     }
 
-    layer.enabled: mouse.containsMouse || root.resizeActive
-    layer.effect: DropShadow {
-        horizontalOffset: 0
-        verticalOffset: 4
-        radius: 12
-        samples: 24
-        color: "#55000000"
-    }
 }

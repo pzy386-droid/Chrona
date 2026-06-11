@@ -73,7 +73,7 @@ Rectangle {
 
             Text {
                 Layout.fillWidth: true
-                text: qsTr("任务详情")
+                text: root.isEvent ? qsTr("Fixed Time Details") : qsTr("Task Details")
                 color: "#AAB4C6"
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
@@ -84,7 +84,7 @@ Rectangle {
                 spacing: 7
 
                 Text {
-                    text: qsTr("固定当前块")
+                    text: qsTr("Lock current block")
                     color: "#8D98AB"
                     font.pixelSize: 11
                     font.weight: Font.DemiBold
@@ -95,7 +95,7 @@ Rectangle {
                     checked: true
                     onToggled: function(checked) {
                         var result = root.isEvent
-                            ? { ok: ScheduleService.setEventLocked(root.task.id, checked), message: checked ? qsTr("已固定当前时间块") : qsTr("已取消固定") }
+                            ? { ok: ScheduleService.setEventLocked(root.task.id, checked), message: checked ? qsTr("Current fixed time locked") : qsTr("Current fixed time unlocked") }
                             : ScheduleService.setSelectedBlockLocked(checked)
                         statusText.color = result.ok ? "#A9F0C9" : "#FFB09B"
                         statusText.text = result.message || ""
@@ -113,7 +113,7 @@ Rectangle {
 
                 Text {
                     anchors.centerIn: parent
-                    text: "›"
+                    text: "X"
                     color: "#AAB4C6"
                     font.pixelSize: 22
                     font.weight: Font.DemiBold
@@ -162,7 +162,7 @@ Rectangle {
             Item { Layout.fillHeight: true }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("选择一个时间块")
+                text: qsTr("Select a time block")
                 color: "#E6EAF2"
                 font.pixelSize: 22
                 font.weight: Font.DemiBold
@@ -170,7 +170,7 @@ Rectangle {
             }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("点击时间轴中的学习块，可以在这里修改任务和当前时间块。")
+                text: qsTr("Select a time block on the timeline to edit its task and current block here.")
                 color: "#8C96AA"
                 font.pixelSize: 13
                 lineHeight: 1.35
@@ -194,14 +194,14 @@ Rectangle {
                 width: parent.width
                 spacing: 13
 
-                FieldLabel { text: root.isEvent ? qsTr("标题") : qsTr("任务标题") }
+                FieldLabel { text: root.isEvent ? qsTr("Title") : qsTr("Task title") }
                 TextField {
                     id: titleField
                     Layout.fillWidth: true
                     color: "#E6EAF2"
                     selectedTextColor: "white"
                     selectionColor: "#5968D8"
-                    placeholderText: qsTr("例如：高数期中复习")
+                    placeholderText: qsTr("For example: Calculus midterm review")
                     placeholderTextColor: "#667187"
                     font.pixelSize: 18
                     font.weight: Font.DemiBold
@@ -210,7 +210,7 @@ Rectangle {
 
                 FieldLabel {
                     visible: !root.isEvent
-                    text: qsTr("备注")
+                    text: qsTr("Notes")
                 }
                 TextArea {
                     id: notesField
@@ -220,7 +220,7 @@ Rectangle {
                     color: "#E6EAF2"
                     selectedTextColor: "white"
                     selectionColor: "#5968D8"
-                    placeholderText: qsTr("补充资料、章节或完成标准")
+                    placeholderText: qsTr("Notes, chapters, resources, or completion criteria")
                     placeholderTextColor: "#667187"
                     font.pixelSize: 13
                     wrapMode: TextEdit.WordWrap
@@ -229,7 +229,7 @@ Rectangle {
 
                 FieldLabel {
                     visible: !root.isEvent
-                    text: qsTr("截止时间")
+                    text: qsTr("Deadline")
                 }
                 TextField {
                     id: deadlineField
@@ -250,12 +250,12 @@ Rectangle {
 
                     FieldLabel {
                         Layout.fillWidth: true
-                        text: qsTr("当前时间块")
+                        text: qsTr("Current time block")
                     }
 
                     Text {
                         visible: !root.isEvent && (root.task.blockTotal || 0) > 1
-                        text: qsTr("第 %1 / %2 块").arg(root.task.blockOrdinal || 1).arg(root.task.blockTotal || 1)
+                        text: qsTr("Block %1 / %2").arg(root.task.blockOrdinal || 1).arg(root.task.blockTotal || 1)
                         color: "#7C8CFF"
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
@@ -265,7 +265,7 @@ Rectangle {
                 OptionPills {
                     id: dayPicker
                     Layout.fillWidth: true
-                    options: [qsTr("今天"), qsTr("明天"), qsTr("后天"), qsTr("第4天"), qsTr("第5天"), qsTr("第6天"), qsTr("第7天")]
+                    options: [qsTr("Today"), qsTr("Tomorrow"), qsTr("+2"), qsTr("+3"), qsTr("+4"), qsTr("+5"), qsTr("+6")]
                 }
 
                 RowLayout {
@@ -299,23 +299,23 @@ Rectangle {
                         Layout.fillWidth: true
                         spacing: 8
                         visible: !root.isEvent
-                        FieldLabel { text: qsTr("优先级") }
+                        FieldLabel { text: qsTr("Priority") }
                         OptionPills {
                             id: priorityPicker
                             Layout.fillWidth: true
-                            options: [qsTr("低"), qsTr("中"), qsTr("高")]
+                            options: [qsTr("Low"), qsTr("Medium"), qsTr("High")]
                         }
                     }
                 }
 
-                FieldLabel { text: qsTr("课程分类") }
+                FieldLabel { text: qsTr("Category") }
                 TextField {
                     id: categoryField
                     Layout.fillWidth: true
                     color: "#E6EAF2"
                     selectedTextColor: "white"
                     selectionColor: "#5968D8"
-                    placeholderText: qsTr("学习 / 高数 / 英语")
+                    placeholderText: qsTr("Study / Course / Meal")
                     placeholderTextColor: "#667187"
                     font.pixelSize: 13
                     background: FieldBackground {}
@@ -323,18 +323,18 @@ Rectangle {
 
                 FieldLabel {
                     visible: !root.isEvent
-                    text: qsTr("偏好学习时间")
+                    text: qsTr("Preferred time")
                 }
                 OptionPills {
                     id: preferredPicker
                     visible: !root.isEvent
                     Layout.fillWidth: true
-                    options: [qsTr("上午"), qsTr("下午"), qsTr("晚上")]
+                    options: [qsTr("Morning"), qsTr("Afternoon"), qsTr("Evening")]
                 }
 
                 FieldLabel {
                     visible: !root.isEvent
-                    text: qsTr("自动调度偏好")
+                    text: qsTr("Scheduler behavior")
                 }
                 Rectangle {
                     visible: !root.isEvent
@@ -355,13 +355,13 @@ Rectangle {
                             Layout.fillWidth: true
                             spacing: 2
                             Text {
-                                text: qsTr("允许 Scheduler 自动排程")
+                                text: qsTr("Allow scheduler to adjust this task")
                                 color: "#E6EAF2"
                                 font.pixelSize: 12
                                 font.weight: Font.DemiBold
                             }
                             Text {
-                                text: qsTr("关闭后仅保留你手动拖拽的时间块")
+                                text: qsTr("When off, only manually dragged time blocks are kept")
                                 color: "#7F8A9E"
                                 font.pixelSize: 10
                                 elide: Text.ElideRight
@@ -382,21 +382,21 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        FieldLabel { text: qsTr("截止类型") }
+                        FieldLabel { text: qsTr("Deadline type") }
                         OptionPills {
                             id: deadlineTypePicker
                             Layout.fillWidth: true
-                            options: [qsTr("软"), qsTr("硬")]
+                            options: [qsTr("Hard deadline"), qsTr("Soft deadline")]
                         }
                     }
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        FieldLabel { text: qsTr("学习强度") }
+                        FieldLabel { text: qsTr("Effort") }
                         OptionPills {
                             id: effortPicker
                             Layout.fillWidth: true
-                            options: [qsTr("轻"), qsTr("中"), qsTr("重")]
+                            options: [qsTr("Light"), qsTr("Medium"), qsTr("Heavy")]
                         }
                     }
                 }
@@ -408,7 +408,7 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        FieldLabel { text: qsTr("最短块") }
+                        FieldLabel { text: qsTr("Duration") }
                         OptionPills {
                             id: minChunkPicker
                             Layout.fillWidth: true
@@ -418,7 +418,7 @@ Rectangle {
                     ColumnLayout {
                         Layout.fillWidth: true
                         spacing: 8
-                        FieldLabel { text: qsTr("理想块") }
+                        FieldLabel { text: qsTr("Ideal block") }
                         OptionPills {
                             id: idealChunkPicker
                             Layout.fillWidth: true
@@ -444,7 +444,7 @@ Rectangle {
 
             ActionButton {
                 Layout.fillWidth: true
-                text: qsTr("删除")
+                text: qsTr("Delete")
                 danger: true
                 onClicked: {
                     var result = ScheduleService.deleteTask(root.task.id)
@@ -456,7 +456,7 @@ Rectangle {
         ActionButton {
             visible: root.hasTask
             Layout.fillWidth: true
-            text: root.isEvent ? qsTr("保存固定时间") : qsTr("保存任务和时间块")
+            text: root.isEvent ? qsTr("Save fixed time") : qsTr("Save task")
             onClicked: {
                 var savedTitle = titleField.text
                 var savedNotes = notesField.text
@@ -480,7 +480,7 @@ Rectangle {
                 var endMinute = Number(endParts[0]) * 60 + Number(endParts[1])
                 if (startParts.length !== 2 || endParts.length !== 2 || isNaN(startMinute) || isNaN(endMinute) || endMinute <= startMinute) {
                     statusText.color = "#FFB09B"
-                    statusText.text = qsTr("结束时间必须晚于起始时间")
+                    statusText.text = qsTr("End time must be later than start time")
                     return
                 }
 
@@ -501,14 +501,14 @@ Rectangle {
                 var moveResult = ScheduleService.moveSelectedTaskBlock(savedDayIndex, savedStartTime, savedEndTime)
                 if (!moveResult.ok) {
                     statusText.color = "#FFB09B"
-                    statusText.text = moveResult.message || qsTr("移动失败")
+                    statusText.text = moveResult.message || qsTr("Could not move this block")
                     return
                 }
 
                 var lockResult = ScheduleService.setSelectedBlockLocked(savedEventLocked)
                 if (!lockResult.ok) {
                     statusText.color = "#FFB09B"
-                    statusText.text = lockResult.message || qsTr("固定状态保存失败")
+                    statusText.text = lockResult.message || qsTr("Failed to save lock state")
                     return
                 }
 
@@ -528,7 +528,7 @@ Rectangle {
                     savedEffort
                 )
                 statusText.color = updateResult.ok ? "#A9F0C9" : "#FFB09B"
-                statusText.text = updateResult.ok ? qsTr("已保存并移动时间块") : (updateResult.message || qsTr("保存失败"))
+                statusText.text = updateResult.ok ? qsTr("Saved and moved time block") : (updateResult.message || qsTr("Save failed"))
             }
         }
     }
@@ -537,13 +537,13 @@ Rectangle {
 
     TimeWheelPicker {
         id: startWheel
-        title: qsTr("选择起始时间")
+        title: qsTr("Select start time")
         onAccepted: function(value) { root.editStartTime = value }
     }
 
     TimeWheelPicker {
         id: endWheel
-        title: qsTr("选择终止时间")
+        title: qsTr("Select end time")
         onAccepted: function(value) { root.editEndTime = value }
     }
 
@@ -629,7 +629,7 @@ Rectangle {
                 color: "#E6EAF2"
                 selectedTextColor: "white"
                 selectionColor: "#5968D8"
-                placeholderText: qsTr("瀛︿範 / 楂樻暟 / 鑻辫")
+                placeholderText: qsTr("Study / Math / English")
                 placeholderTextColor: "#667187"
                 font.pixelSize: 13
                 background: FieldBackground {}
@@ -711,7 +711,7 @@ Rectangle {
 
                             Text {
                                 Layout.fillWidth: true
-                                text: (modelData.startText || "") + " - " + (modelData.endText || "") + (modelData.categoryName ? " · " + modelData.categoryName : "")
+                                text: (modelData.startText || "") + " - " + (modelData.endText || "") + (modelData.categoryName ? " - " + modelData.categoryName : "")
                                 color: "#8C96AA"
                                 font.pixelSize: 11
                                 elide: Text.ElideRight
@@ -854,7 +854,7 @@ Rectangle {
             }
 
             Text {
-                text: "⌄"
+                text: "v"
                 color: "#7C8CFF"
                 font.pixelSize: 16
                 font.weight: Font.DemiBold

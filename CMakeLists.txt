@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTools)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTools Test)
 
 qt_standard_project_setup(REQUIRES 6.6)
 
@@ -100,3 +100,20 @@ target_link_libraries(Chrona PRIVATE
 if(WIN32)
     set_target_properties(Chrona PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
+
+enable_testing()
+
+add_executable(TaskSchedulerTest
+    tests/TaskSchedulerTest.cpp
+    src/core/scheduler/CapacityAnalyzer.cpp
+    src/core/scheduler/CapacityAnalyzer.h
+    src/core/scheduler/PriorityEvaluator.cpp
+    src/core/scheduler/PriorityEvaluator.h
+    src/core/scheduler/TaskScheduler.cpp
+    src/core/scheduler/TaskScheduler.h
+    src/core/scheduler/TimeBlockGenerator.cpp
+    src/core/scheduler/TimeBlockGenerator.h
+)
+target_include_directories(TaskSchedulerTest PRIVATE src)
+target_link_libraries(TaskSchedulerTest PRIVATE Qt6::Core Qt6::Test)
+add_test(NAME TaskSchedulerTest COMMAND TaskSchedulerTest)
