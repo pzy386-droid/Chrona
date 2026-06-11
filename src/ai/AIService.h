@@ -3,6 +3,7 @@
 #include <QFuture>
 #include <QObject>
 #include <QString>
+#include <QVariantList>
 #include <QVariantMap>
 
 struct AIParseResult {
@@ -10,6 +11,7 @@ struct AIParseResult {
     QVariantMap taskDraft;
     QString message;
     QString provider;
+    QVariantList taskDrafts;
 };
 
 struct AISuggestionResult {

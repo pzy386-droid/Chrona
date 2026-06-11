@@ -453,6 +453,15 @@ Rectangle {
 
             ActionButton {
                 Layout.fillWidth: true
+                text: qsTr("解释排程")
+                onClicked: {
+                    var result = ScheduleService.explainSelectedSchedule()
+                    statusText.text = result.summary || result.message || qsTr("暂无排程解释")
+                }
+            }
+
+            ActionButton {
+                Layout.fillWidth: true
                 text: qsTr("删除")
                 danger: true
                 onClicked: {

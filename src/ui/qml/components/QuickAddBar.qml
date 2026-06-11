@@ -10,6 +10,7 @@ Rectangle {
     property string recommendationDelta: "+18%"
     signal addRequested(string text)
     signal imagePreviewRequested(string fileUrl)
+    signal recommendationRequested()
 
     height: 116
     radius: 12
@@ -41,6 +42,13 @@ Rectangle {
             color: "#10141C"
             border.width: 1
             border.color: "#30384C"
+
+            MouseArea {
+                anchors.fill: parent
+                hoverEnabled: true
+                cursorShape: Qt.PointingHandCursor
+                onClicked: root.recommendationRequested()
+            }
 
             RowLayout {
                 anchors.fill: parent

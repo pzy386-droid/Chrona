@@ -66,6 +66,7 @@ Rectangle {
 
             Repeater {
                 model: [
+                    {label: qsTr("AI 今日计划"), mark: "#8B99FF", action: "dailyPlan"},
                     {label: qsTr("时间轴"), mark: "#6C63FF", action: "timeline"},
                     {label: qsTr("当前专注"), mark: "#00D68F", action: "focus"},
                     {label: qsTr("课程"), mark: "#FFB547", action: "courses"}
@@ -93,6 +94,9 @@ Rectangle {
                         onClicked: {
                             if (modelData.action === "focus" && root.scrollToFocus) {
                                 root.scrollToFocus()
+                            } else if (modelData.action === "dailyPlan") {
+                                dailyPlanOverlay.mode = "daily"
+                                dailyPlanOverlay.visible = true
                             }
                         }
                     }

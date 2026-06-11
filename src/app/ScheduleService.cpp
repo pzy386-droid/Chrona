@@ -919,11 +919,22 @@ QVariantMap ScheduleService::previewTaskDraft(const QString& input)
         if (aiResult.supported && !aiResult.taskDraft.isEmpty()) {
             QVariantMap draft = aiResult.taskDraft;
             draft.insert(QStringLiteral("source"), aiResult.provider.isEmpty() ? QStringLiteral("ai") : aiResult.provider);
+            QVariantList drafts = aiResult.taskDrafts;
+            if (drafts.isEmpty()) {
+                drafts.push_back(draft);
+            }
+            for (QVariant& value : drafts) {
+                QVariantMap item = value.toMap();
+                item.insert(QStringLiteral("source"), draft.value(QStringLiteral("source")));
+                value = item;
+            }
             return {
                 {"ok", true},
                 {"message", aiResult.message},
                 {"source", draft.value(QStringLiteral("source"))},
-                {"draft", draft}
+                {"draft", draft},
+                {"drafts", drafts},
+                {"draftCount", drafts.size()}
             };
         }
     }
@@ -936,7 +947,9 @@ QVariantMap ScheduleService::previewTaskDraft(const QString& input)
         {"ok", true},
         {"message", QObject::tr("已生成本地规则任务草稿，请确认后加入日程")},
         {"source", QStringLiteral("local")},
-        {"draft", parsedDraftToMap(draft, QStringLiteral("local"), draft.message)}
+        {"draft", parsedDraftToMap(draft, QStringLiteral("local"), draft.message)},
+        {"drafts", QVariantList{parsedDraftToMap(draft, QStringLiteral("local"), draft.message)}},
+        {"draftCount", 1}
     };
 }
 
@@ -1002,6 +1015,242 @@ QVariantMap ScheduleService::quickAdd(const QString& input)
         return preview;
     }
     return createTaskFromDraft(preview.value(QStringLiteral("draft")).toMap());
+}
+
+QVariantMap ScheduleService::createTasksFromDrafts(const QVariantList& drafts)
+{
+    if (drafts.isEmpty()) {
+        return {{"ok", false}, {"message", QObject::tr("没有可创建的任务草稿")}};
+    }
+    int created = 0;
+    for (const QVariant& value : drafts) {
+        const QVariantMap result = createTaskFromDraft(value.toMap());
+        if (!result.value(QStringLiteral("ok")).toBool()) {
+            return {
+                {"ok", false},
+                {"createdCount", created},
+                {"message", QObject::tr("已创建 %1 个任务，后续草稿失败：%2")
+                    .arg(created)
+                    .arg(result.value(QStringLiteral("message")).toString())}
+            };
+        }
+        ++created;
+    }
+    return {
+        {"ok", true},
+        {"createdCount", created},
+        {"message", QObject::tr("已确认并创建 %1 个任务").arg(created)}
+    };
+}
+
+ScheduleContext ScheduleService::buildAIContext(const QString& mode) const
+{
+    QVariantList tasks;
+    for (const Task& task : m_tasks.activeTasks()) {
+        tasks.push_back(QVariantMap{
+            {QStringLiteral("id"), task.id},
+            {QStringLiteral("title"), task.title},
+            {QStringLiteral("deadline"), deadlineText(task.deadline)},
+            {QStringLiteral("remainingMinutes"), task.remainingMinutes},
+            {QStringLiteral("priority"), static_cast<int>(task.priority)},
+            {QStringLiteral("category"), task.categoryName},
+            {QStringLiteral("preferredStudyTime"), task.preferredStudyTime}
+        });
+    }
+
+    const ScheduleWindow window = currentWindow();
+    QVariantList events;
+    for (const CalendarEvent& event : m_calendar.eventsBetween(window.start, window.end)) {
+        events.push_back(QVariantMap{
+            {QStringLiteral("title"), event.title},
+            {QStringLiteral("start"), deadlineText(event.start)},
+            {QStringLiteral("end"), deadlineText(event.end)},
+            {QStringLiteral("category"), event.categoryName}
+        });
+    }
+
+    QVariantList blocks;
+    for (const TimeBlock& block : m_blocks.blocksBetween(window.start, window.end)) {
+        blocks.push_back(QVariantMap{
+            {QStringLiteral("id"), block.id},
+            {QStringLiteral("taskId"), block.taskId},
+            {QStringLiteral("start"), deadlineText(block.start)},
+            {QStringLiteral("end"), deadlineText(block.end)},
+            {QStringLiteral("explanation"), block.explanation},
+            {QStringLiteral("completed"), block.completedAt.isValid()}
+        });
+    }
+
+    ScheduleContext context;
+    context.data = {
+        {QStringLiteral("mode"), mode},
+        {QStringLiteral("now"), deadlineText(QDateTime::currentDateTime())},
+        {QStringLiteral("tasks"), tasks},
+        {QStringLiteral("events"), events},
+        {QStringLiteral("blocks"), blocks},
+        {QStringLiteral("issues"), m_scheduleIssues},
+        {QStringLiteral("capacity"), m_capacityStats},
+        {QStringLiteral("selected"), selectedDetail()}
+    };
+    return context;
+}
+
+QVariantMap ScheduleService::localAIPlan(const QString& mode) const
+{
+    QVariantList reasons;
+    QVariantList suggestions;
+    QString title;
+    QString summary;
+    QString currentFocus = m_focusItem.value(QStringLiteral("title")).toString();
+    QString riskLevel = m_unscheduledTaskIds.isEmpty() ? QStringLiteral("low") : QStringLiteral("high");
+
+    if (mode == QStringLiteral("explain_schedule")) {
+        title = QObject::tr("排程解释");
+        const QVariantMap detail = selectedDetail();
+        const int blockId = detail.value(QStringLiteral("blockId")).toInt();
+        const auto item = m_timelineModel.itemById(blockId);
+        const QString explanation = item ? item->explanation : QString();
+        summary = explanation.isEmpty()
+            ? QObject::tr("该安排由本地 Scheduler 根据截止时间、优先级、固定日程和可用容量生成。")
+            : explanation;
+        reasons.push_back(QObject::tr("本地排程结果是最终事实来源"));
+        reasons.push_back(QObject::tr("AI 仅解释现有数据，不会移动时间块"));
+    } else {
+        title = mode == QStringLiteral("daily_plan") ? QObject::tr("AI 今日计划") : QObject::tr("智能排程建议");
+        summary = m_unscheduledTaskIds.isEmpty()
+            ? QObject::tr("当前计划可执行，优先完成临近截止且优先级较高的任务。")
+            : QObject::tr("当前有 %1 个任务未能完整排入，需要确认调整。").arg(m_unscheduledTaskIds.size());
+        if (!currentFocus.isEmpty()) {
+            reasons.push_back(QObject::tr("当前建议先完成：%1").arg(currentFocus));
+        }
+        for (const QVariant& value : m_scheduleIssues) {
+            const QVariantMap issue = value.toMap();
+            reasons.push_back(QObject::tr("%1：%2").arg(
+                issue.value(QStringLiteral("title")).toString(),
+                issue.value(QStringLiteral("reason")).toString()));
+            const int taskId = issue.value(QStringLiteral("taskId")).toInt();
+            const auto task = m_taskModel.taskById(taskId);
+            if (task) {
+                suggestions.push_back(QVariantMap{
+                    {QStringLiteral("title"), QObject::tr("延长“%1”的截止时间").arg(task->title)},
+                    {QStringLiteral("description"), issue.value(QStringLiteral("fixHint")).toString()},
+                    {QStringLiteral("impact"), QObject::tr("为 Scheduler 增加一天可用容量")},
+                    {QStringLiteral("actionType"), QStringLiteral("extend_deadline")},
+                    {QStringLiteral("taskId"), taskId},
+                    {QStringLiteral("proposedDeadline"), deadlineText(task->deadline.addDays(1))}
+                });
+            }
+        }
+        if (suggestions.isEmpty()) {
+            suggestions.push_back(QVariantMap{
+                {QStringLiteral("title"), QObject::tr("按当前约束重新排程")},
+                {QStringLiteral("description"), QObject::tr("保留固定事件和用户锁定时间块，刷新自动时间块。")},
+                {QStringLiteral("impact"), QObject::tr("不会修改任务内容")},
+                {QStringLiteral("actionType"), QStringLiteral("reschedule")},
+                {QStringLiteral("taskId"), 0},
+                {QStringLiteral("proposedDeadline"), QString()}
+            });
+        }
+    }
+
+    return {
+        {QStringLiteral("ok"), true},
+        {QStringLiteral("title"), title},
+        {QStringLiteral("summary"), summary},
+        {QStringLiteral("riskLevel"), riskLevel},
+        {QStringLiteral("currentFocus"), currentFocus},
+        {QStringLiteral("reasons"), reasons},
+        {QStringLiteral("suggestions"), suggestions},
+        {QStringLiteral("provider"), QStringLiteral("local")},
+        {QStringLiteral("model"), QObject::tr("本地规则")}
+    };
+}
+
+QVariantMap ScheduleService::requestAIPlan(const QString& mode)
+{
+    if (m_aiService) {
+        QFuture<AISuggestionResult> future = m_aiService->suggestScheduleChanges(buildAIContext(mode));
+        future.waitForFinished();
+        const AISuggestionResult result = future.result();
+        if (result.supported && !result.suggestion.isEmpty()) {
+            QVariantMap plan = result.suggestion;
+            QVariantList validSuggestions;
+            const QSet<QString> allowed{
+                QStringLiteral("reschedule"),
+                QStringLiteral("extend_deadline"),
+                QStringLiteral("review_task")
+            };
+            for (const QVariant& value : plan.value(QStringLiteral("suggestions")).toList()) {
+                const QVariantMap suggestion = value.toMap();
+                if (allowed.contains(suggestion.value(QStringLiteral("actionType")).toString())) {
+                    validSuggestions.push_back(suggestion);
+                }
+            }
+            plan.insert(QStringLiteral("suggestions"), validSuggestions);
+            plan.insert(QStringLiteral("ok"), true);
+            plan.insert(QStringLiteral("provider"), result.provider);
+            return plan;
+        }
+    }
+    return localAIPlan(mode);
+}
+
+QVariantMap ScheduleService::aiTodayPlan()
+{
+    return requestAIPlan(QStringLiteral("daily_plan"));
+}
+
+QVariantMap ScheduleService::previewScheduleSuggestions()
+{
+    return requestAIPlan(QStringLiteral("schedule_suggestions"));
+}
+
+QVariantMap ScheduleService::explainSelectedSchedule()
+{
+    if (selectedDetail().isEmpty()) {
+        return {{"ok", false}, {"message", QObject::tr("请先选择一个任务或时间块")}};
+    }
+    return requestAIPlan(QStringLiteral("explain_schedule"));
+}
+
+QVariantMap ScheduleService::applyScheduleSuggestion(const QVariantMap& suggestion)
+{
+    const QString action = suggestion.value(QStringLiteral("actionType")).toString();
+    if (action == QStringLiteral("reschedule")) {
+        reschedule();
+        return {{"ok", true}, {"message", QObject::tr("已按当前约束重新排程")}};
+    }
+
+    const int taskId = suggestion.value(QStringLiteral("taskId")).toInt();
+    const auto taskValue = m_taskModel.taskById(taskId);
+    if (!taskValue) {
+        return {{"ok", false}, {"message", QObject::tr("建议引用的任务不存在")}};
+    }
+    if (action == QStringLiteral("review_task")) {
+        selectTask(taskId);
+        return {{"ok", true}, {"message", QObject::tr("已打开任务详情，尚未修改数据")}};
+    }
+    if (action != QStringLiteral("extend_deadline")) {
+        return {{"ok", false}, {"message", QObject::tr("不支持的 AI 建议操作")}};
+    }
+
+    QDateTime proposed = QDateTime::fromString(
+        suggestion.value(QStringLiteral("proposedDeadline")).toString(), QStringLiteral("yyyy-MM-dd HH:mm"));
+    if (!proposed.isValid()) {
+        proposed = QDateTime::fromString(
+            suggestion.value(QStringLiteral("proposedDeadline")).toString(), Qt::ISODate);
+    }
+    Task task = *taskValue;
+    if (!proposed.isValid() || proposed <= task.deadline || proposed > task.deadline.addDays(30)) {
+        return {{"ok", false}, {"message", QObject::tr("建议的截止时间无效或超出允许范围")}};
+    }
+    task.deadline = proposed;
+    if (!m_tasks.updateTask(task, task.categoryName)) {
+        return {{"ok", false}, {"message", QObject::tr("任务调整失败：%1").arg(m_tasks.lastError())}};
+    }
+    reschedule();
+    selectTask(taskId);
+    return {{"ok", true}, {"message", QObject::tr("已确认延期并重新排程")}};
 }
 
 QVariantMap ScheduleService::previewImageTask(const QString& fileUrlOrPath)

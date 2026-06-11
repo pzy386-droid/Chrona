@@ -71,7 +71,12 @@ public:
     Q_INVOKABLE QVariantMap setSelectedBlockLocked(bool locked);
     Q_INVOKABLE QVariantMap previewTaskDraft(const QString& input);
     Q_INVOKABLE QVariantMap createTaskFromDraft(const QVariantMap& draft);
+    Q_INVOKABLE QVariantMap createTasksFromDrafts(const QVariantList& drafts);
     Q_INVOKABLE QVariantMap quickAdd(const QString& input);
+    Q_INVOKABLE QVariantMap aiTodayPlan();
+    Q_INVOKABLE QVariantMap previewScheduleSuggestions();
+    Q_INVOKABLE QVariantMap explainSelectedSchedule();
+    Q_INVOKABLE QVariantMap applyScheduleSuggestion(const QVariantMap& suggestion);
     Q_INVOKABLE QVariantMap previewImageTask(const QString& fileUrlOrPath);
     Q_INVOKABLE QVariantMap eveningReview() const;
     Q_INVOKABLE bool setDemoModeEnabled(bool enabled);
@@ -90,6 +95,9 @@ private:
     QVariantMap taskToMap(const Task& task) const;
     QVariantMap studyFrameToMap(const StudyFrame& frame) const;
     QVariantMap eventToDetailMap(const TimelineItem& item) const;
+    ScheduleContext buildAIContext(const QString& mode) const;
+    QVariantMap localAIPlan(const QString& mode) const;
+    QVariantMap requestAIPlan(const QString& mode);
 
     TaskRepository m_tasks;
     CalendarRepository m_calendar;

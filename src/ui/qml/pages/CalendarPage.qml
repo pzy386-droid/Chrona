@@ -18,6 +18,7 @@ Item {
     property int focusDurationSeconds: 25 * 60
     property int focusRemainingSeconds: focusDurationSeconds
     property var aiDraft: ({})
+    property var aiDrafts: []
 
     function formatFocusTime(seconds) {
         var m = Math.floor(seconds / 60)
@@ -132,7 +133,11 @@ Item {
             source: root.aiDraft.source || "local",
             explanation: aiDraftReason.text
         }
-        var result = ScheduleService.createTaskFromDraft(draft)
+        var drafts = root.aiDrafts && root.aiDrafts.length > 1 ? root.aiDrafts.slice(0) : [draft]
+        drafts[0] = draft
+        var result = drafts.length > 1
+            ? ScheduleService.createTasksFromDrafts(drafts)
+            : ScheduleService.createTaskFromDraft(draft)
         aiDraftPopup.close()
         quickAddToast.kind = result && result.ok ? "success" : "danger"
         quickAddToast.text = result && result.message ? result.message : qsTr("已处理")
@@ -314,10 +319,8 @@ Item {
             }
             onFocusStopRequested: root.requestEndFocus()
             onRescheduleRequested: {
-                ScheduleService.reschedule()
-                quickAddToast.kind = "success"
-                quickAddToast.text = qsTr("已重新规划")
-                quickAddToast.open()
+                dailyPlanOverlay.mode = "suggestions"
+                dailyPlanOverlay.visible = true
             }
         }
 
@@ -461,17 +464,24 @@ Item {
         QuickAddBar {
             Layout.fillWidth: true
             capacityStats: ScheduleService.capacityStats
+            onRecommendationRequested: {
+                dailyPlanOverlay.mode = "suggestions"
+                dailyPlanOverlay.visible = true
+            }
             onAddRequested: function(text) {
                 var result = ScheduleService.previewTaskDraft(text)
                 if (result && result.ok) {
                     root.aiDraft = result.draft || ({})
+                    root.aiDrafts = result.drafts || [root.aiDraft]
                     aiDraftTitle.text = root.aiDraft.title || ""
                     aiDraftDeadline.text = root.aiDraft.deadline || ""
                     aiDraftDuration.value = Math.max(30, root.aiDraft.estimatedMinutes || 60)
                     aiDraftPriority.selectedIndex = Math.max(0, Math.min(2, root.aiDraft.priority || 1))
                     aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
                     aiDraftNotes.text = root.aiDraft.notes || ""
-                    aiDraftReason.text = root.aiDraft.explanation || result.message || ""
+                    aiDraftReason.text = (result.draftCount || 1) > 1
+                        ? qsTr("识别到 %1 个任务。编辑第一个任务后，确认将一次创建全部草稿。").arg(result.draftCount)
+                        : (root.aiDraft.explanation || result.message || "")
                     aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek AI 草稿") : qsTr("本地规则草稿")
                     aiDraftPopup.open()
                 } else {
@@ -816,6 +826,7 @@ Item {
                         var result = ScheduleService.previewTaskDraft(ocrText.text)
                         if (result && result.ok) {
                             root.aiDraft = result.draft || ({})
+                            root.aiDrafts = result.drafts || [root.aiDraft]
                             aiDraftTitle.text = root.aiDraft.title || ""
                             aiDraftDeadline.text = root.aiDraft.deadline || ""
                             aiDraftDuration.value = Math.max(30, root.aiDraft.estimatedMinutes || 60)

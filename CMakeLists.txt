@@ -121,4 +121,13 @@ if(BUILD_TESTING)
     target_include_directories(ChronaDatabaseTests PRIVATE src)
     target_link_libraries(ChronaDatabaseTests PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
     add_test(NAME ChronaDatabaseTests COMMAND ChronaDatabaseTests)
+
+    qt_add_executable(ChronaNLPTests
+        tests/NLPTaskParserTests.cpp
+        src/managers/NLPTaskParser.cpp
+        src/managers/NLPTaskParser.h
+    )
+    target_include_directories(ChronaNLPTests PRIVATE src)
+    target_link_libraries(ChronaNLPTests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME ChronaNLPTests COMMAND ChronaNLPTests)
 endif()
