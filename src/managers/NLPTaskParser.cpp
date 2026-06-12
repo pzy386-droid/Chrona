@@ -52,9 +52,13 @@ ParsedTaskDraft NLPTaskParser::parse(const QString& input, const QDateTime& now)
     draft.estimatedMinutes = resolveDurationMinutes(text);
     draft.priority = resolvePriority(text);
     draft.categoryName = resolveCategory(text);
-    draft.preferredStudyTime = time.hour() < 12
-        ? QStringLiteral("morning")
-        : time.hour() < 18 ? QStringLiteral("afternoon") : QStringLiteral("evening");
+    draft.preferredStudyTime = time.hour() < 12 ? QStringLiteral("morning") : time.hour() < 18 ? QStringLiteral("afternoon") : QStringLiteral("evening");
+    draft.hasTimeAnchor = hasSchedulingAnchor(text);
+    if (draft.hasTimeAnchor) {
+        draft.scheduledStart = QDateTime(date, time);
+        draft.scheduledEnd = draft.scheduledStart.addSecs(draft.estimatedMinutes * 60);
+        draft.deadline = draft.scheduledEnd;
+    }
     draft.title = text;
     draft.notes = QObject::tr("由 Quick Add 本地规则解析创建");
     draft.valid = true;
@@ -127,7 +131,10 @@ QTime NLPTaskParser::resolveTime(const QString& input) const
     if (input.contains(QStringLiteral("下午"))) {
         return QTime(15, 0);
     }
-    if (containsAny(input, {QStringLiteral("今晚"), QStringLiteral("晚上")})) {
+    if (input.contains(QStringLiteral("中午")) || input.contains(QStringLiteral("午饭"))) {
+        return QTime(12, 0);
+    }
+    if (input.contains(QStringLiteral("今晚")) || input.contains(QStringLiteral("晚上"))) {
         return QTime(21, 0);
     }
     if (containsAny(input, {QStringLiteral("考试"), QStringLiteral("截止")})
@@ -135,6 +142,22 @@ QTime NLPTaskParser::resolveTime(const QString& input) const
         return QTime(23, 59);
     }
     return QTime(23, 0);
+}
+
+bool NLPTaskParser::hasSchedulingAnchor(const QString& input) const
+{
+    const bool hasTimeWord = containsAny(input, {
+        QStringLiteral("凌晨"), QStringLiteral("早上"), QStringLiteral("上午"), QStringLiteral("中午"),
+        QStringLiteral("下午"), QStringLiteral("晚上"), QStringLiteral("今晚"), QStringLiteral("明早"),
+        QStringLiteral("午饭"), QStringLiteral("晚饭")
+    });
+    QRegularExpression explicitTime(QStringLiteral("(\\d{1,2})\\s*(点|:|：)\\s*(\\d{1,2})?"));
+    const bool hasExplicitTime = explicitTime.match(input).hasMatch();
+    const bool deadlineOnly = input.contains(QStringLiteral("截止"))
+        || input.contains(QStringLiteral("DDL"), Qt::CaseInsensitive)
+        || input.contains(QStringLiteral("deadline"), Qt::CaseInsensitive)
+        || input.contains(QStringLiteral("交"));
+    return (hasTimeWord || hasExplicitTime) && !deadlineOnly;
 }
 
 Priority NLPTaskParser::resolvePriority(const QString& input) const
@@ -174,6 +197,9 @@ QString NLPTaskParser::resolveCategory(const QString& input) const
     }
     if (input.contains(QStringLiteral("作业"))) {
         return QObject::tr("作业");
+    }
+    if (containsAny(input, {QStringLiteral("吃饭"), QStringLiteral("午饭"), QStringLiteral("晚饭")})) {
+        return QObject::tr("生活");
     }
     return QObject::tr("学习");
 }

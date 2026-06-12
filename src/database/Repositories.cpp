@@ -114,16 +114,22 @@ QVector<Task> TaskRepository::allTasks() const
 
 bool TaskRepository::createTask(const Task& task, const QString& categoryName) const
 {
+    return createTaskReturningId(task, categoryName) > 0;
+}
+
+int TaskRepository::createTaskReturningId(const Task& task, const QString& categoryName) const
+{
     m_lastError.clear();
     QSqlDatabase db = m_db;
     if (!db.transaction()) {
         m_lastError = db.lastError().text();
-        return false;
+        return 0;
     }
+
     const int categoryId = ensureCategory(categoryName);
     if (categoryId <= 0) {
         db.rollback();
-        return false;
+        return 0;
     }
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
@@ -151,13 +157,16 @@ bool TaskRepository::createTask(const Task& task, const QString& categoryName) c
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     if (!query.exec()) {
-        return rollbackWithError(db, m_lastError, query);
+        rollbackWithError(db, m_lastError, query);
+        return 0;
     }
+
+    const int taskId = query.lastInsertId().toInt();
     if (!db.commit()) {
         m_lastError = db.lastError().text();
-        return false;
+        return 0;
     }
-    return true;
+    return taskId;
 }
 
 bool TaskRepository::updateTask(const Task& task, const QString& categoryName) const
@@ -481,6 +490,18 @@ bool CalendarRepository::updateEvent(const CalendarEvent& event, const QString& 
     return true;
 }
 
+bool CalendarRepository::deleteEvent(int eventId) const
+{
+    if (eventId <= 0) {
+        return false;
+    }
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("DELETE FROM calendar_events WHERE id = ?"));
+    query.addBindValue(eventId);
+    return query.exec() && query.numRowsAffected() == 1;
+}
+
 bool CalendarRepository::setEventLocked(int eventId, bool locked) const
 {
     QSqlQuery query(m_db);
@@ -500,6 +521,32 @@ bool CalendarRepository::moveEvent(int eventId, const QDateTime& start, const QD
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     query.addBindValue(eventId);
     return query.exec() && query.numRowsAffected() == 1;
+}
+
+bool CalendarRepository::setCategoryColor(const QString& categoryName, const QString& color) const
+{
+    const QString normalized = categoryName.trimmed().isEmpty() ? QStringLiteral("课程") : categoryName.trimmed();
+    const QString normalizedColor = color.trimmed();
+    if (normalizedColor.isEmpty()) {
+        return false;
+    }
+
+    QSqlQuery select(m_db);
+    select.prepare(QStringLiteral("SELECT id FROM categories WHERE name = ?"));
+    select.addBindValue(normalized);
+    if (select.exec() && select.next()) {
+        QSqlQuery update(m_db);
+        update.prepare(QStringLiteral("UPDATE categories SET color = ? WHERE id = ?"));
+        update.addBindValue(normalizedColor);
+        update.addBindValue(select.value(0).toInt());
+        return update.exec();
+    }
+
+    QSqlQuery insert(m_db);
+    insert.prepare(QStringLiteral("INSERT INTO categories(name, color) VALUES(?, ?)"));
+    insert.addBindValue(normalized);
+    insert.addBindValue(normalizedColor);
+    return insert.exec();
 }
 
 int CalendarRepository::ensureCategory(const QString& name) const
@@ -1138,4 +1185,16 @@ bool TimeBlockRepository::completeBlock(int blockId) const
     }
 
     return db.commit();
+}
+
+bool TimeBlockRepository::deleteBlock(int blockId) const
+{
+    if (blockId <= 0) {
+        return false;
+    }
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("DELETE FROM time_blocks WHERE id = ?"));
+    query.addBindValue(blockId);
+    return query.exec() && query.numRowsAffected() == 1;
 }

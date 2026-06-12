@@ -20,8 +20,8 @@ class ScheduleService : public QObject {
     Q_PROPERTY(QObject* taskModel READ taskModel CONSTANT)
     Q_PROPERTY(QVariantMap focusItem READ focusItem NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap capacityStats READ capacityStats NOTIFY dataChanged)
+    Q_PROPERTY(QVariantMap aiStatus READ aiStatus NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap selectedTask READ selectedTask NOTIFY selectedTaskChanged)
-    Q_PROPERTY(QVariantList studyFrames READ studyFrames NOTIFY dataChanged)
     Q_PROPERTY(QVariantMap selectedDetail READ selectedDetail NOTIFY selectedTaskChanged)
     Q_PROPERTY(int unscheduledCount READ unscheduledCount NOTIFY dataChanged)
     Q_PROPERTY(QVariantList scheduleIssues READ scheduleIssues NOTIFY dataChanged)
@@ -37,17 +37,18 @@ public:
     QObject* taskModel();
     QVariantMap focusItem() const;
     QVariantMap capacityStats() const;
+    QVariantMap aiStatus() const;
     QVariantMap selectedTask() const;
-    QVariantList studyFrames() const;
     QVariantMap selectedDetail() const;
     int unscheduledCount() const;
     QVariantList scheduleIssues() const;
     bool demoModeEnabled() const;
     QString persistenceError() const;
 
-    Q_INVOKABLE void reschedule();
+    Q_INVOKABLE QVariantMap reschedule();
     Q_INVOKABLE void selectTask(int taskId);
     Q_INVOKABLE void selectTimelineItem(int taskId, int blockId);
+    Q_INVOKABLE void clearSelection();
     Q_INVOKABLE QVariantMap startFocus();
     Q_INVOKABLE QVariantMap stopFocus();
     Q_INVOKABLE void completeTask(int taskId);
@@ -58,20 +59,22 @@ public:
     Q_INVOKABLE QVariantMap deleteTask(int taskId);
     Q_INVOKABLE QVariantMap updateCategoryColor(const QString& categoryName, const QString& color);
     Q_INVOKABLE QVariantMap addFixedEvent(const QString& title, int dayOffset, int startMinute, int durationMinutes, bool locked, const QString& categoryName);
-    Q_INVOKABLE QVariantMap addStudyFrame(const QString& name, int dayIndex, const QString& startText, const QString& endText, const QString& categoryName, const QString& energyLevel);
-    Q_INVOKABLE bool setStudyFrameEnabled(int frameId, bool enabled);
-    Q_INVOKABLE bool deleteStudyFrame(int frameId);
+    Q_INVOKABLE bool setCategoryColor(const QString& categoryName, const QString& color);
     Q_INVOKABLE QVariantMap updateSelectedEvent(const QString& title, int dayIndex, const QString& startText, const QString& endText, bool locked, const QString& categoryName);
     Q_INVOKABLE QVariantMap scheduleSelectedEventBlocks(const QString& title, int startDayIndex, int endDayIndex, const QString& startText, const QString& endText, bool locked, const QString& categoryName);
     Q_INVOKABLE bool moveBlock(int blockId, int dayIndex, int startMinute, int durationMinutes);
-    Q_INVOKABLE bool moveTimelineItem(int itemId, bool isEvent, int dayIndex, int startMinute, int durationMinutes);
+    Q_INVOKABLE bool moveTimelineItem(int itemId, int dayIndex, int startMinute, int durationMinutes);
+    Q_INVOKABLE QVariantMap resizeTimelineItemTime(int itemId, int startMinute, int durationMinutes);
+    Q_INVOKABLE QVariantMap stretchTimelineItemDays(int itemId, int endDayIndex);
     Q_INVOKABLE QVariantMap moveSelectedTaskBlock(int dayIndex, const QString& startText, const QString& endText);
     Q_INVOKABLE QVariantMap scheduleSelectedTaskBlocks(int startDayIndex, int endDayIndex, const QString& startText, const QString& endText, bool locked);
     Q_INVOKABLE bool setEventLocked(int eventId, bool locked);
     Q_INVOKABLE QVariantMap setSelectedBlockLocked(bool locked);
     Q_INVOKABLE QVariantMap previewTaskDraft(const QString& input);
+    Q_INVOKABLE void requestTaskDraft(const QString& input);
     Q_INVOKABLE QVariantMap createTaskFromDraft(const QVariantMap& draft);
     Q_INVOKABLE QVariantMap createTasksFromDrafts(const QVariantList& drafts);
+    Q_INVOKABLE QVariantMap setDeepSeekApiKey(const QString& apiKey);
     Q_INVOKABLE QVariantMap quickAdd(const QString& input);
     Q_INVOKABLE QVariantMap aiTodayPlan();
     Q_INVOKABLE QVariantMap previewScheduleSuggestions();
@@ -86,14 +89,15 @@ public:
 signals:
     void dataChanged();
     void selectedTaskChanged();
+    void taskDraftReady(const QVariantMap& result);
 
 private:
     ScheduleWindow currentWindow() const;
+    int normalizeManualBlockBackedTasks(const ScheduleWindow& window, const QVector<TimeBlock>& manualBlocks);
     void reload();
     void rebuildTimeline(const QVector<Task>& tasks, const QVector<CalendarEvent>& events, const QVector<TimeBlock>& blocks);
     void rebuildCapacityStats(const QVector<TimeBlock>& blocks);
     QVariantMap taskToMap(const Task& task) const;
-    QVariantMap studyFrameToMap(const StudyFrame& frame) const;
     QVariantMap eventToDetailMap(const TimelineItem& item) const;
     ScheduleContext buildAIContext(const QString& mode) const;
     QVariantMap localAIPlan(const QString& mode) const;

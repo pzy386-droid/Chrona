@@ -36,4 +36,11 @@ public:
 
     virtual QFuture<AIParseResult> parseNaturalLanguageTask(const QString& input) = 0;
     virtual QFuture<AISuggestionResult> suggestScheduleChanges(const ScheduleContext& context) = 0;
+    virtual QString providerName() const { return QStringLiteral("ai"); }
+    virtual bool isConfigured() const { return false; }
+    virtual bool setApiKey(const QString& apiKey)
+    {
+        Q_UNUSED(apiKey)
+        return false;
+    }
 };

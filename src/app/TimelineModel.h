@@ -15,9 +15,14 @@ struct TimelineItem {
     int durationMinutes = 0;
     int priority = 1;
     QString color;
+    QString kind = QStringLiteral("task");
+    QString source = QStringLiteral("auto");
     bool event = false;
     bool locked = false;
     bool eventLocked = false;
+    bool canMove = true;
+    bool canResize = true;
+    bool canLock = true;
     bool selected = false;
     int blockOrdinal = 0;
     int blockTotal = 0;
@@ -47,6 +52,12 @@ public:
         IsEventRole,
         IsLockedRole,
         IsEventLockedRole,
+        KindRole,
+        SourceRole,
+        LockActiveRole,
+        CanMoveRole,
+        CanResizeRole,
+        CanLockRole,
         SelectedRole,
         BlockOrdinalRole,
         BlockTotalRole,

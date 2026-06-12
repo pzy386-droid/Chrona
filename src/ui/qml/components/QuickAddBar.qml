@@ -5,16 +5,21 @@ import QtQuick.Layouts
 Rectangle {
     id: root
     property var capacityStats: ({})
+    property var aiStatus: ({})
     property string recommendationTitle: qsTr("AI 推荐")
     property string recommendationBody: qsTr("14:00 - 15:30 适合高认知学习")
     property string recommendationDelta: "+18%"
     signal addRequested(string text)
     signal imagePreviewRequested(string fileUrl)
     signal recommendationRequested()
+    signal aiConfigRequested()
+    readonly property bool compact: width < 1020
+    readonly property bool dense: width < 860
 
-    height: 116
+    height: dense ? 96 : 116
     radius: 12
     color: "#161A23"
+    clip: true
     border.width: 1
     border.color: dropArea.containsDrag ? "#7C8CFF" : "#252B3A"
 
@@ -36,7 +41,8 @@ Rectangle {
         spacing: 12
 
         Rectangle {
-            Layout.preferredWidth: 260
+            visible: !root.dense
+            Layout.preferredWidth: root.compact ? 218 : 260
             Layout.fillHeight: true
             radius: 10
             color: "#10141C"
@@ -109,6 +115,7 @@ Rectangle {
         Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
+            Layout.minimumWidth: root.dense ? 320 : 270
             radius: 10
             color: "#10141C"
             border.width: 1
@@ -121,10 +128,35 @@ Rectangle {
                 spacing: 10
 
                 Text {
+                    id: aiBadge
                     text: "AI"
-                    color: "#7C8CFF"
+                    color: root.aiStatus.configured ? "#7C8CFF" : "#8C96AA"
                     font.pixelSize: 14
                     font.weight: Font.Bold
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.aiConfigRequested()
+                    }
+                }
+
+                Text {
+                    id: aiStatusText
+                    visible: !root.compact
+                    text: root.aiStatus.label || qsTr("本地规则")
+                    color: root.aiStatus.configured ? "#A9F0C9" : "#8C96AA"
+                    font.pixelSize: 10
+                    Layout.maximumWidth: 86
+                    elide: Text.ElideRight
+
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.aiConfigRequested()
+                    }
                 }
 
                 TextField {
@@ -144,7 +176,8 @@ Rectangle {
                 }
 
                 CapsuleButton {
-                    text: qsTr("AI 规划")
+                    Layout.preferredWidth: root.compact ? 64 : 76
+                    text: root.compact ? qsTr("规划") : qsTr("AI 规划")
                     onClicked: {
                         if (input.text.trim().length > 0) {
                             root.addRequested(input.text.trim())
@@ -156,6 +189,7 @@ Rectangle {
         }
 
         Rectangle {
+            visible: !root.compact
             Layout.preferredWidth: 188
             Layout.fillHeight: true
             radius: 10
@@ -188,7 +222,8 @@ Rectangle {
         }
 
         Rectangle {
-            Layout.preferredWidth: 164
+            visible: !root.dense
+            Layout.preferredWidth: root.compact ? 142 : 164
             Layout.fillHeight: true
             radius: 10
             color: "#10141C"
@@ -235,7 +270,7 @@ Rectangle {
         property alias text: label.text
         signal clicked()
 
-        width: 76
+        implicitWidth: 76
         height: 38
         radius: 8
         color: mouse.containsMouse ? "#8B99FF" : "#7C8CFF"

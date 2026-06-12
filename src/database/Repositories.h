@@ -24,6 +24,7 @@ public:
     QVector<Task> activeTasks() const;
     QVector<Task> allTasks() const;
     bool createTask(const Task& task, const QString& categoryName) const;
+    int createTaskReturningId(const Task& task, const QString& categoryName) const;
     bool updateTask(const Task& task, const QString& categoryName) const;
     bool updateCategoryColor(const QString& categoryName, const QString& color) const;
     bool updateScheduleStatuses(const QVector<int>& scheduledTaskIds, const QVector<int>& couldNotFitTaskIds) const;
@@ -43,11 +44,13 @@ public:
     QVector<CalendarEvent> eventsBetween(const QDateTime& start, const QDateTime& end) const;
     bool createEvent(const CalendarEvent& event, const QString& categoryName) const;
     bool updateEvent(const CalendarEvent& event, const QString& categoryName) const;
+    bool deleteEvent(int eventId) const;
     bool setEventLocked(int eventId, bool locked) const;
     bool moveEvent(int eventId, const QDateTime& start, const QDateTime& end) const;
     bool upsertEvents(const QVector<CalendarEvent>& events, const QString& categoryName,
                       const QVector<int>& removeEventIds = {}, QVector<int>* eventIds = nullptr) const;
     QString lastError() const;
+    bool setCategoryColor(const QString& categoryName, const QString& color) const;
 
 private:
     int ensureCategory(const QString& name) const;
@@ -72,6 +75,7 @@ public:
                         const QVector<int>& scheduledTaskIds, const QVector<int>& couldNotFitTaskIds,
                         const QString& reason, int* scheduleRunId = nullptr) const;
     QString lastError() const;
+    bool deleteBlock(int blockId) const;
 
 private:
     QSqlDatabase m_db;

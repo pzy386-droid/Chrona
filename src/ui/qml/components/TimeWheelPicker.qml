@@ -24,14 +24,14 @@ Popup {
         if (isNaN(m)) m = 0
         root.suppressApply = true
         hourWheel.setIndex(Math.max(0, Math.min(23, h)))
-        minuteWheel.setIndex(Math.max(0, Math.min(59, m)))
+        minuteWheel.setIndex(Math.max(0, Math.min(minuteWheel.count - 1, Math.round(m / minuteWheel.step))))
         root.suppressApply = false
         root.timeText = currentTimeText()
         root.open()
     }
 
     function currentTimeText() {
-        return String(hourWheel.selectedIndex).padStart(2, "0") + ":" + String(minuteWheel.selectedIndex).padStart(2, "0")
+        return String(hourWheel.selectedValue()).padStart(2, "0") + ":" + String(minuteWheel.selectedValue()).padStart(2, "0")
     }
 
     function applyCurrent() {
@@ -125,8 +125,8 @@ Popup {
                     id: minuteWheel
                     width: 48
                     height: parent.height
-                    count: 60
-                    step: 1
+                    count: 12
+                    step: 5
                 }
             }
         }
@@ -167,6 +167,10 @@ Popup {
             currentIndex = index
             positionViewAtIndex(index, ListView.Center)
             root.applyCurrent()
+        }
+
+        function selectedValue() {
+            return selectedIndex * step
         }
 
         function updateSelected() {

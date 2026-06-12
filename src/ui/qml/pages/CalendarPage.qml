@@ -1,11 +1,7 @@
-import
- QtQuick
-import
- QtQuick.Controls
-import
- QtQuick.Layouts
-import
- Chrona
+﻿import QtQuick
+import QtQuick.Controls
+import QtQuick.Layouts
+import Chrona
 
 Item {
     id: root
@@ -19,6 +15,7 @@ Item {
     property int focusRemainingSeconds: focusDurationSeconds
     property var aiDraft: ({})
     property var aiDrafts: []
+    property bool aiDraftLoading: false
 
     function formatFocusTime(seconds) {
         var m = Math.floor(seconds / 60)
@@ -122,14 +119,22 @@ Item {
     }
 
     function submitAiDraft() {
+        var durationValue = Number(String(aiDraftDurationText.text).replace(/[^0-9]/g, ""))
+        if (isNaN(durationValue) || durationValue <= 0) {
+            durationValue = root.aiDraft.estimatedMinutes || 60
+        }
         var draft = {
             title: aiDraftTitle.text,
             notes: aiDraftNotes.text,
             deadline: aiDraftDeadline.text,
-            estimatedMinutes: aiDraftDuration.value,
+            estimatedMinutes: Math.max(30, durationValue),
             priority: aiDraftPriority.selectedIndex,
             categoryName: aiDraftCategory.text,
             preferredStudyTime: "evening",
+            planningMode: root.aiDraft.planningMode || "task_deadline",
+            hasTimeAnchor: !!root.aiDraft.hasTimeAnchor,
+            scheduledStart: root.aiDraft.scheduledStart || "",
+            scheduledEnd: root.aiDraft.scheduledEnd || "",
             source: root.aiDraft.source || "local",
             explanation: aiDraftReason.text
         }
@@ -142,6 +147,29 @@ Item {
         quickAddToast.kind = result && result.ok ? "success" : "danger"
         quickAddToast.text = result && result.message ? result.message : qsTr("已处理")
         quickAddToast.open()
+    }
+
+    function showTaskDraftResult(result) {
+        root.aiDraftLoading = false
+        if (result && result.ok) {
+            root.aiDraft = result.draft || ({})
+            aiDraftTitle.text = root.aiDraft.title || ""
+            aiDraftDeadline.text = root.aiDraft.deadline || ""
+            aiDraftDurationText.text = String(Math.max(30, root.aiDraft.estimatedMinutes || 60))
+            aiDraftPriority.selectedIndex = Math.max(0, Math.min(2, root.aiDraft.priority || 1))
+            aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
+            aiDraftNotes.text = root.aiDraft.notes || ""
+            aiDraftReason.text = root.aiDraft.explanation || result.message || ""
+            aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek 规划草稿") : qsTr("本地规则草稿")
+            if (!aiDraftPopup.opened) {
+                aiDraftPopup.open()
+            }
+        } else {
+            aiDraftPopup.close()
+            quickAddToast.kind = "danger"
+            quickAddToast.text = result && result.message ? result.message : qsTr("解析失败")
+            quickAddToast.open()
+        }
     }
 
     Timer {
@@ -158,6 +186,13 @@ Item {
         }
     }
 
+    Connections {
+        target: ScheduleService
+        function onTaskDraftReady(result) {
+            root.showTaskDraftResult(result)
+        }
+    }
+
     ColumnLayout {
         anchors.fill: parent
         anchors.leftMargin: root.leftPadding
@@ -167,36 +202,47 @@ Item {
         spacing: 12
 
         Rectangle {
+            id: topHeader
             Layout.fillWidth: true
-            Layout.preferredHeight: 76
+            Layout.preferredHeight: compact ? 64 : 72
+
+            readonly property bool compact: width < 980
+            readonly property bool dense: width < 820
 
             radius: 14
 
             color: "#161B22"
+            clip: true
 
             border.width: 1
             border.color: "#2A3140"
 
             RowLayout {
                 anchors.fill: parent
-                anchors.margins: 14
-                spacing: 10
+                anchors.margins: topHeader.compact ? 10 : 12
+                spacing: topHeader.compact ? 8 : 10
 
                 ColumnLayout {
                     Layout.fillWidth: true
+                    Layout.minimumWidth: 150
                     spacing: 3
 
                     Text {
-                        text: "👋 欢迎回来"
+                        text: "馃憢 娆㈣繋鍥炴潵"
                         color: "#FFFFFF"
-                        font.pixelSize: 18
+                        font.pixelSize: topHeader.compact ? 15 : 18
                         font.bold: true
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
 
                     Text {
-                        text: "Chrona 已为今天生成学习计划"
+                        visible: !topHeader.dense
+                        text: "Chrona 宸蹭负浠婂ぉ鐢熸垚瀛︿範璁″垝"
                         color: "#9AA4B2"
                         font.pixelSize: 12
+                        elide: Text.ElideRight
+                        Layout.fillWidth: true
                     }
 
                     Text {
@@ -208,8 +254,9 @@ Item {
                 }
 
                 Rectangle {
-                    width: 82
-                    height: 48
+                    visible: !topHeader.dense
+                    Layout.preferredWidth: topHeader.compact ? 70 : 82
+                    Layout.preferredHeight: topHeader.compact ? 42 : 48
                     radius: 10
 
                     color: "#202638"
@@ -225,7 +272,7 @@ Item {
                         }
 
                         Text {
-                            text: "任务"
+                            text: "浠诲姟"
                             color: "#9AA4B2"
                             font.pixelSize: 10
                         }
@@ -233,8 +280,9 @@ Item {
                 }
 
                 Rectangle {
-                    width: 82
-                    height: 48
+                    visible: !topHeader.dense
+                    Layout.preferredWidth: topHeader.compact ? 70 : 82
+                    Layout.preferredHeight: topHeader.compact ? 42 : 48
                     radius: 10
 
                     color: "#202638"
@@ -258,21 +306,27 @@ Item {
                 }
 
                 DensityControl {
+                    visible: topHeader.width > 700
+                    preferredWidth: topHeader.compact ? 150 : 188
                     label: qsTr("行距")
                     value: root.timelineMinuteHeight
-                    from: 0.85
+                    from: 0.5
                     to: 1.75
                     onValueChangedByUser: function(v) {
                         root.timelineMinuteHeight = v
                     }
-                    valueLabel: root.timelineMinuteHeight < 1.08
-                                ? qsTr("紧")
+                    valueLabel: root.timelineMinuteHeight <= 0.52
+                                ? qsTr("24h")
+                                : root.timelineMinuteHeight < 1.08
+                                  ? qsTr("紧")
                                 : root.timelineMinuteHeight > 1.42
                                   ? qsTr("松")
                                   : qsTr("中")
                 }
 
                 DensityControl {
+                    visible: topHeader.width > 820
+                    preferredWidth: topHeader.compact ? 150 : 188
                     label: qsTr("列距")
                     value: root.timelineColumnWidth
                     from: 140
@@ -288,6 +342,9 @@ Item {
                 }
 
                 SegmentedControl {
+                    Layout.preferredWidth: 112
+                    Layout.minimumWidth: 112
+                    Layout.maximumWidth: 112
                     options: [qsTr("日"), qsTr("周")]
                     selectedIndex: root.viewMode === "day" ? 0 : 1
                     onSelectedIndexChanged: {
@@ -298,6 +355,7 @@ Item {
                 }
 
                 LanguageToggle {
+                    visible: topHeader.width > 1120
                     currentLocale: LocaleService.locale
                     onLocaleRequested: function(locale) {
                         LocaleService.setLocale(locale)
@@ -319,8 +377,10 @@ Item {
             }
             onFocusStopRequested: root.requestEndFocus()
             onRescheduleRequested: {
-                dailyPlanOverlay.mode = "suggestions"
-                dailyPlanOverlay.visible = true
+                var result = ScheduleService.reschedule()
+                quickAddToast.kind = result.ok ? "success" : "warning"
+                quickAddToast.text = result.message || qsTr("已重新规划")
+                quickAddToast.open()
             }
         }
 
@@ -405,9 +465,9 @@ Item {
                         anchors.fill: parent
                         hoverEnabled: true
                         onClicked: {
-                            ScheduleService.reschedule()
-                            quickAddToast.kind = "success"
-                            quickAddToast.text = qsTr("已重新规划")
+                            var result = ScheduleService.reschedule()
+                            quickAddToast.kind = result.ok ? "success" : "warning"
+                            quickAddToast.text = result.message || qsTr("已重新规划")
                             quickAddToast.open()
                         }
                     }
@@ -432,7 +492,7 @@ Item {
                 anchors.margins: 16
 
                 Text {
-                    text: "🤖"
+                    text: "馃"
                     font.pixelSize: 28
                 }
 
@@ -460,41 +520,41 @@ Item {
                 }
             }
         }
-
         QuickAddBar {
             Layout.fillWidth: true
             capacityStats: ScheduleService.capacityStats
+            aiStatus: ScheduleService.aiStatus
             onRecommendationRequested: {
                 dailyPlanOverlay.mode = "suggestions"
                 dailyPlanOverlay.visible = true
             }
             onAddRequested: function(text) {
-                var result = ScheduleService.previewTaskDraft(text)
-                if (result && result.ok) {
-                    root.aiDraft = result.draft || ({})
-                    root.aiDrafts = result.drafts || [root.aiDraft]
-                    aiDraftTitle.text = root.aiDraft.title || ""
-                    aiDraftDeadline.text = root.aiDraft.deadline || ""
-                    aiDraftDuration.value = Math.max(30, root.aiDraft.estimatedMinutes || 60)
-                    aiDraftPriority.selectedIndex = Math.max(0, Math.min(2, root.aiDraft.priority || 1))
-                    aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
-                    aiDraftNotes.text = root.aiDraft.notes || ""
-                    aiDraftReason.text = (result.draftCount || 1) > 1
-                        ? qsTr("识别到 %1 个任务。编辑第一个任务后，确认将一次创建全部草稿。").arg(result.draftCount)
-                        : (root.aiDraft.explanation || result.message || "")
-                    aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek AI 草稿") : qsTr("本地规则草稿")
-                    aiDraftPopup.open()
-                } else {
-                    quickAddToast.kind = "danger"
-                    quickAddToast.text = result && result.message ? result.message : qsTr("解析失败")
-                    quickAddToast.open()
-                }
+                root.aiDraftLoading = true
+                root.aiDraft = ({ planningMode: "thinking" })
+                root.aiDrafts = []
+                aiDraftTitle.text = ""
+                aiDraftDeadline.text = ""
+                aiDraftDurationText.text = "60"
+                aiDraftCategory.text = ""
+                aiDraftNotes.text = ""
+                aiDraftReason.text = qsTr("DeepSeek 正在理解你的时间意图...")
+                aiDraftSource.text = qsTr("DeepSeek 正在规划")
+                aiDraftPopup.open()
+                ScheduleService.requestTaskDraft(text)
             }
             onImagePreviewRequested: function(fileUrl) {
                 var preview = ScheduleService.previewImageTask(fileUrl)
                 ocrText.text = preview.recognizedText || ""
                 ocrMessage.text = preview.message || ""
                 ocrPopup.open()
+            }
+            onAiConfigRequested: {
+                deepSeekApiKeyField.text = ""
+                aiConfigStatus.text = ScheduleService.aiStatus.configured
+                    ? qsTr("DeepSeek 当前已连接。留空保存可切回本地规则模式。")
+                    : qsTr("填入 DeepSeek API Key 后，Quick Add 会优先使用 AI 解析。")
+                aiConfigStatus.color = "#9AA4B2"
+                aiConfigPopup.open()
             }
         }
 
@@ -503,7 +563,6 @@ Item {
             Layout.fillHeight: true
             viewMode: root.viewMode
             model: ScheduleService.timelineModel
-            frameModel: ScheduleService.studyFrames
             minuteHeight: root.timelineMinuteHeight
             requestedDayColumnWidth: root.timelineColumnWidth
         }
@@ -716,34 +775,135 @@ Item {
 
     Popup {
         id: aiDraftPopup
-        width: 520
-        height: 520
+        width: 560
+        height: 540
         modal: true
         focus: true
         anchors.centerIn: parent
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
-        background: PopupBackground {}
+        padding: 0
+        enter: Transition {
+            NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
+            NumberAnimation { property: "scale"; from: 0.975; to: 1; duration: 220; easing.type: Easing.OutCubic }
+        }
+        exit: Transition {
+            NumberAnimation { property: "opacity"; from: 1; to: 0; duration: 130; easing.type: Easing.InCubic }
+            NumberAnimation { property: "scale"; from: 1; to: 0.985; duration: 130; easing.type: Easing.InCubic }
+        }
+        background: Rectangle {
+            id: aiGlass
+            property real breath: 0
+            radius: 18
+            color: "#E61A2030"
+            border.width: 1
+            border.color: "#56627F"
+            clip: true
+
+            SequentialAnimation on breath {
+                loops: Animation.Infinite
+                NumberAnimation { from: 0; to: 1; duration: 1800; easing.type: Easing.InOutSine }
+                NumberAnimation { from: 1; to: 0; duration: 1800; easing.type: Easing.InOutSine }
+            }
+
+            Rectangle {
+                x: -90 + aiGlass.breath * 18
+                y: -90
+                width: 230
+                height: 230
+                radius: 115
+                color: "#7C8CFF"
+                opacity: 0.11 + aiGlass.breath * 0.08
+                scale: 1 + aiGlass.breath * 0.035
+            }
+
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                height: 1
+                color: "#AFC5FF"
+                opacity: 0.34 + aiGlass.breath * 0.24
+            }
+
+            Rectangle {
+                anchors.fill: parent
+                anchors.margins: 1
+                radius: 17
+                color: "#8811151D"
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 20
-            spacing: 12
+            anchors.margins: 26
+            spacing: 14
 
             RowLayout {
                 Layout.fillWidth: true
-                Text {
-                    id: aiDraftSource
+                spacing: 12
+
+                Rectangle {
+                    id: aiOrb
+                    Layout.preferredWidth: 42
+                    Layout.preferredHeight: 42
+                    radius: 21
+                    color: "#222A44"
+                    border.width: 1
+                    border.color: "#7C8CFF"
+                    opacity: 0.92
+                    scale: 1 + aiGlass.breath * 0.035
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: "AI"
+                        color: "#B9C3FF"
+                        font.pixelSize: 13
+                        font.weight: Font.Black
+                    }
+                }
+
+                ColumnLayout {
                     Layout.fillWidth: true
-                    text: qsTr("AI 任务草稿")
-                    color: "#E6EAF2"
-                    font.pixelSize: 20
-                    font.weight: Font.DemiBold
+                    spacing: 2
+                    Text {
+                        id: aiDraftSource
+                        Layout.fillWidth: true
+                        text: qsTr("DeepSeek 规划草稿")
+                        color: "#F3F6FF"
+                        font.pixelSize: 21
+                        font.weight: Font.DemiBold
+                    }
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("AI 已理解意图，确认后才写入数据库")
+                        color: "#9EA9BE"
+                        font.pixelSize: 12
+                    }
                 }
-                Text {
-                    text: qsTr("确认后才写入数据库")
-                    color: "#8C96AA"
-                    font.pixelSize: 12
+
+                Rectangle {
+                    Layout.preferredWidth: 88
+                    Layout.preferredHeight: 30
+                    radius: 15
+                    color: "#182033"
+                    border.width: 1
+                    border.color: "#33405C"
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: root.aiDraft.planningMode === "direct_time_block" ? qsTr("时间块") : qsTr("任务")
+                        color: "#A9F0C9"
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
                 }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 1
+                color: "#2A3142"
+                opacity: 0.8
             }
 
             TextField { id: aiDraftTitle; Layout.fillWidth: true; placeholderText: qsTr("任务标题"); color: "#E6EAF2"; background: PopupFieldBackground {} }
@@ -751,17 +911,23 @@ Item {
 
             RowLayout {
                 Layout.fillWidth: true
-                SpinBox {
-                    id: aiDraftDuration
+                TextField {
+                    id: aiDraftDurationText
                     Layout.fillWidth: true
-                    from: 30
-                    to: 720
-                    stepSize: 15
-                    value: 60
-                    editable: true
-                    textFromValue: function(value) { return qsTr("%1 分钟").arg(value) }
-                    valueFromText: function(text) { return Number(text.replace(/[^0-9]/g, "")) }
+                    text: "60"
+                    color: "#E6EAF2"
+                    placeholderText: qsTr("分钟")
+                    validator: IntValidator { bottom: 30; top: 720 }
                     background: PopupFieldBackground {}
+                    rightPadding: 54
+                    Text {
+                        anchors.right: parent.right
+                        anchors.rightMargin: 14
+                        anchors.verticalCenter: parent.verticalCenter
+                        text: qsTr("分钟")
+                        color: "#7F8AA2"
+                        font.pixelSize: 12
+                    }
                 }
                 SegmentedControl {
                     id: aiDraftPriority
@@ -774,14 +940,170 @@ Item {
             TextArea {
                 id: aiDraftNotes
                 Layout.fillWidth: true
-                Layout.preferredHeight: 82
+                Layout.preferredHeight: 74
                 color: "#E6EAF2"
                 wrapMode: TextEdit.WordWrap
-                placeholderText: qsTr("备注")
+                placeholderText: ""
+                background: PopupFieldBackground {}
+
+                Text {
+                    anchors.left: parent.left
+                    anchors.top: parent.top
+                    anchors.leftMargin: 14
+                    anchors.topMargin: 10
+                    text: qsTr("备注")
+                    color: "#667289"
+                    font.pixelSize: 12
+                    visible: aiDraftNotes.text.length === 0
+                    z: 2
+                }
+            }
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 76
+                radius: 12
+                color: "#80101520"
+                border.width: 1
+                border.color: "#253047"
+
+                Text {
+                    id: aiDraftReason
+                    anchors.fill: parent
+                    anchors.margins: 14
+                    color: "#AAB6CC"
+                    font.pixelSize: 12
+                    lineHeight: 1.22
+                    wrapMode: Text.WordWrap
+                    elide: Text.ElideRight
+                }
+            }
+
+            Item { Layout.fillHeight: true }
+            RowLayout {
+                Layout.fillWidth: true
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("DeepSeek 只生成草稿，不直接改数据库")
+                    color: "#6F7A91"
+                    font.pixelSize: 11
+                }
+                FocusButton { text: qsTr("取消"); muted: true; onClicked: aiDraftPopup.close() }
+                FocusButton { text: qsTr("加入日程"); onClicked: root.submitAiDraft() }
+            }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: 18
+            color: "#B6121620"
+            visible: root.aiDraftLoading
+            opacity: root.aiDraftLoading ? 1 : 0
+            z: 20
+            Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+
+            MouseArea { anchors.fill: parent }
+
+            Column {
+                anchors.centerIn: parent
+                spacing: 16
+
+                Item {
+                    width: 48
+                    height: 48
+                    anchors.horizontalCenter: parent.horizontalCenter
+
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 24
+                        color: "transparent"
+                        border.width: 2
+                        border.color: "#34405C"
+                    }
+
+                    Rectangle {
+                        width: 10
+                        height: 10
+                        radius: 5
+                        color: "#7C8CFF"
+                        x: 19
+                        y: -1
+                    }
+
+                    RotationAnimation on rotation {
+                        running: root.aiDraftLoading
+                        loops: Animation.Infinite
+                        from: 0
+                        to: 360
+                        duration: 900
+                        easing.type: Easing.Linear
+                    }
+                }
+
+                Text {
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    text: qsTr("DeepSeek 正在整理时间意图")
+                    color: "#E6EAF2"
+                    font.pixelSize: 14
+                    font.weight: Font.DemiBold
+                }
+
+                Text {
+                    width: 260
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("会先生成草稿，确认后才写入数据库")
+                    color: "#8F9AB0"
+                    font.pixelSize: 12
+                    wrapMode: Text.WordWrap
+                }
+            }
+        }
+    }
+
+    Popup {
+        id: aiConfigPopup
+        width: 460
+        height: 278
+        modal: true
+        focus: true
+        anchors.centerIn: parent
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: PopupBackground {}
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 20
+            spacing: 13
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("AI 接入设置")
+                color: "#E6EAF2"
+                font.pixelSize: 20
+                font.weight: Font.DemiBold
+            }
+
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("Chrona 只让 AI 解析任务草稿。保存并确认后，任务才会写入数据库并进入 Scheduler。")
+                color: "#9AA4B2"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+                lineHeight: 1.35
+            }
+
+            TextField {
+                id: deepSeekApiKeyField
+                Layout.fillWidth: true
+                placeholderText: qsTr("DeepSeek API Key")
+                echoMode: TextInput.Password
+                color: "#E6EAF2"
+                placeholderTextColor: "#667187"
                 background: PopupFieldBackground {}
             }
+
             Text {
-                id: aiDraftReason
+                id: aiConfigStatus
                 Layout.fillWidth: true
                 color: "#9AA4B2"
                 font.pixelSize: 12
@@ -792,8 +1114,21 @@ Item {
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
-                FocusButton { text: qsTr("取消"); muted: true; onClicked: aiDraftPopup.close() }
-                FocusButton { text: qsTr("加入日程"); onClicked: root.submitAiDraft() }
+                FocusButton { text: qsTr("取消"); muted: true; onClicked: aiConfigPopup.close() }
+                FocusButton {
+                    text: qsTr("保存")
+                    onClicked: {
+                        var result = ScheduleService.setDeepSeekApiKey(deepSeekApiKeyField.text)
+                        aiConfigStatus.color = result.ok ? "#A9F0C9" : "#FFB09B"
+                        aiConfigStatus.text = result.message || ""
+                        if (result.ok) {
+                            quickAddToast.kind = "success"
+                            quickAddToast.text = result.message || qsTr("AI 配置已保存")
+                            quickAddToast.open()
+                            aiConfigPopup.close()
+                        }
+                    }
+                }
             }
         }
     }
@@ -829,12 +1164,12 @@ Item {
                             root.aiDrafts = result.drafts || [root.aiDraft]
                             aiDraftTitle.text = root.aiDraft.title || ""
                             aiDraftDeadline.text = root.aiDraft.deadline || ""
-                            aiDraftDuration.value = Math.max(30, root.aiDraft.estimatedMinutes || 60)
+                            aiDraftDurationText.text = String(Math.max(30, root.aiDraft.estimatedMinutes || 60))
                             aiDraftPriority.selectedIndex = Math.max(0, Math.min(2, root.aiDraft.priority || 1))
                             aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
                             aiDraftNotes.text = root.aiDraft.notes || ""
                             aiDraftReason.text = root.aiDraft.explanation || result.message || ""
-                            aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek AI 草稿") : qsTr("本地规则草稿")
+                            aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek 规划草稿") : qsTr("本地规则草稿")
                             aiDraftPopup.open()
                         }
                     }
@@ -850,9 +1185,10 @@ Item {
         property real from: 0
         property real to: 1
         property string valueLabel: ""
+        property int preferredWidth: 188
         signal valueChangedByUser(real value)
 
-        Layout.preferredWidth: 188
+        Layout.preferredWidth: preferredWidth
         Layout.preferredHeight: 38
         radius: 8
         color: "#161A23"
@@ -878,10 +1214,10 @@ Item {
     }
 
     component PopupFieldBackground: Rectangle {
-        radius: 8
-        color: "#10141C"
+        radius: 10
+        color: "#9A10151D"
         border.width: 1
-        border.color: "#252B3A"
+        border.color: "#2F3A52"
     }
 
     component DarkPills: Rectangle {
@@ -956,7 +1292,7 @@ Item {
             }
 
             Text {
-                text: "⌄"
+                text: "v"
                 color: "#7C8CFF"
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
