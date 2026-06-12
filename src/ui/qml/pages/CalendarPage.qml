@@ -52,7 +52,12 @@ Item {
 
         console.log("Scrolling to focus block for task:",
  focusItem.taskId)
-        ScheduleService.selectTask(focusItem.taskId)
+        root.viewMode = "week"
+        if (focusItem.blockId && focusItem.blockId > 0) {
+            ScheduleService.selectTimelineItem(focusItem.taskId, focusItem.blockId)
+        } else {
+            ScheduleService.selectTask(focusItem.taskId)
+        }
 
         if (!timelineView) {
             console.log("timelineView not found"
@@ -116,6 +121,56 @@ Item {
         } else {
             console.log("Flickable not found"
 )
+        }
+    }
+
+    function scrollToCourses() {
+        var model = ScheduleService.timelineModel
+        if (!model || !timelineView) {
+            return
+        }
+
+        var IdRole = 257
+        var TaskIdRole = 258
+        var DayIndexRole = 264
+        var StartMinuteRole = 265
+        var IsEventRole = 269
+        var count = model.rowCount()
+        var courseId = 0
+        var courseTaskId = 0
+        var courseDayIndex = 2147483647
+        var courseStartMinute = 2147483647
+
+        for (var i = 0; i < count; i++) {
+            var index = model.index(i, 0)
+            if (!model.data(index, IsEventRole)) {
+                continue
+            }
+
+            var dayIndex = model.data(index, DayIndexRole)
+            var startMinute = model.data(index, StartMinuteRole)
+            if (dayIndex < 0 || dayIndex >= 7) {
+                continue
+            }
+            if (dayIndex < courseDayIndex
+                    || (dayIndex === courseDayIndex && startMinute < courseStartMinute)) {
+                courseId = model.data(index, IdRole)
+                courseTaskId = model.data(index, TaskIdRole)
+                courseDayIndex = dayIndex
+                courseStartMinute = startMinute
+            }
+        }
+
+        if (courseId === 0) {
+            return
+        }
+
+        root.viewMode = "week"
+        ScheduleService.selectTimelineItem(courseTaskId, courseId)
+        var flickable = timelineView.flickable
+        if (flickable) {
+            var targetY = (courseStartMinute - timelineView.dayStartMinute) * root.timelineMinuteHeight
+            flickable.contentY = Math.max(0, targetY - flickable.height / 3)
         }
     }
 

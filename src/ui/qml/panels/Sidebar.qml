@@ -7,10 +7,11 @@ Rectangle {
     id: root
 
     property bool collapsed: false
-    property var scrollToFocus: null
     property string currentPage: "timeline"
     signal navigateRequested(string page)
     signal dailyPlanRequested()
+    signal focusRequested()
+    signal coursesRequested()
 
     color: "#0B0E14"
 
@@ -96,8 +97,10 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (modelData.action === "focus" && root.scrollToFocus) {
-                                root.scrollToFocus()
+                            if (modelData.action === "focus") {
+                                root.focusRequested()
+                            } else if (modelData.action === "courses") {
+                                root.coursesRequested()
                             } else if (modelData.action === "dailyPlan") {
                                 root.dailyPlanRequested()
                             } else if (modelData.action === "timeline" || modelData.action === "month") {
