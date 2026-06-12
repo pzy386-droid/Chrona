@@ -8,6 +8,9 @@ Rectangle {
 
     property bool collapsed: false
     property var scrollToFocus: null
+    property string currentPage: "timeline"
+    signal navigateRequested(string page)
+    signal dailyPlanRequested()
 
     color: "#0B0E14"
 
@@ -68,6 +71,7 @@ Rectangle {
                 model: [
                     {label: qsTr("AI 今日计划"), mark: "#8B99FF", action: "dailyPlan"},
                     {label: qsTr("时间轴"), mark: "#6C63FF", action: "timeline"},
+                    {label: qsTr("月历总览"), mark: "#A78BFA", action: "month"},
                     {label: qsTr("当前专注"), mark: "#00D68F", action: "focus"},
                     {label: qsTr("课程"), mark: "#FFB547", action: "courses"}
                 ]
@@ -77,7 +81,7 @@ Rectangle {
                     Layout.fillWidth: true
                     height: 44
                     radius: 12
-                    property bool selected: index === 0
+                    property bool selected: modelData.action === root.currentPage
                     color: hover.containsMouse ? "#202638" : selected ? "#161B22" : "transparent"
                     scale: hover.containsMouse ? 1.03 : 1
                     border.width: selected ? 1 : 0
@@ -95,8 +99,9 @@ Rectangle {
                             if (modelData.action === "focus" && root.scrollToFocus) {
                                 root.scrollToFocus()
                             } else if (modelData.action === "dailyPlan") {
-                                dailyPlanOverlay.mode = "daily"
-                                dailyPlanOverlay.visible = true
+                                root.dailyPlanRequested()
+                            } else if (modelData.action === "timeline" || modelData.action === "month") {
+                                root.navigateRequested(modelData.action)
                             }
                         }
                     }

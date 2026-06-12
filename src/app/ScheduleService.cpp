@@ -253,7 +253,13 @@ QVariantMap ScheduleService::aiStatus() const
 
 QVariantMap ScheduleService::selectedTask() const
 {
-    const auto task = m_taskModel.taskById(m_selectedTaskId);
+    std::optional<Task> task;
+    for (const Task& candidate : m_tasks.allTasks()) {
+        if (candidate.id == m_selectedTaskId) {
+            task = candidate;
+            break;
+        }
+    }
     if (!task) {
         return {};
     }
@@ -281,6 +287,7 @@ QVariantMap ScheduleService::selectedTask() const
         map.insert(QStringLiteral("canLock"), block->canLock);
         map.insert(QStringLiteral("blockOrdinal"), block->blockOrdinal);
         map.insert(QStringLiteral("blockTotal"), block->blockTotal);
+        map.insert(QStringLiteral("completed"), block->completed);
     }
     return map;
 }
@@ -319,6 +326,11 @@ bool ScheduleService::demoModeEnabled() const
 QString ScheduleService::persistenceError() const
 {
     return m_persistenceError;
+}
+
+QString ScheduleService::selectedDateText() const
+{
+    return m_selectedDate.toString(QStringLiteral("yyyy-MM-dd"));
 }
 
 int ScheduleService::normalizeManualBlockBackedTasks(const ScheduleWindow& window, const QVector<TimeBlock>& manualBlocks)
@@ -579,6 +591,135 @@ QVariantMap ScheduleService::deleteTask(int taskId)
     }
     reschedule();
     return {{"ok", true}, {"message", QObject::tr("任务已删除")}};
+}
+
+QVariantMap ScheduleService::archiveTask(int taskId)
+{
+    if (taskId <= 0) {
+        return {{"ok", false}, {"message", QObject::tr("请先选择一个任务")}};
+    }
+    if (!m_tasks.archiveTask(taskId)) {
+        return {{"ok", false}, {"message", QObject::tr("任务归档失败")}};
+    }
+    if (m_selectedTaskId == taskId) {
+        m_selectedTaskId = 0;
+        m_selectedBlockId = 0;
+    }
+    reschedule();
+    return {{"ok", true}, {"message", QObject::tr("任务已归档，历史日程仍会保留")}};
+}
+
+QVariantMap ScheduleService::setSelectedDate(const QString& dateText)
+{
+    const QDate date = QDate::fromString(dateText, QStringLiteral("yyyy-MM-dd"));
+    if (!date.isValid()) {
+        return {{"ok", false}, {"message", QObject::tr("日期无效")}};
+    }
+    if (m_selectedDate == date) {
+        return {{"ok", true}, {"dateText", selectedDateText()}};
+    }
+    m_selectedDate = date;
+    m_selectedTaskId = 0;
+    m_selectedBlockId = 0;
+    reload();
+    emit selectedDateChanged();
+    return {{"ok", true}, {"dateText", selectedDateText()}};
+}
+
+QVariantList ScheduleService::monthOverview(int year, int month) const
+{
+    const QDate monthStart(year, month, 1);
+    if (!monthStart.isValid()) {
+        return {};
+    }
+
+    const QDate gridStart = monthStart.addDays(1 - monthStart.dayOfWeek());
+    const QDate gridEnd = gridStart.addDays(42);
+    const QDateTime rangeStart(gridStart, QTime(0, 0));
+    const QDateTime rangeEnd(gridEnd, QTime(0, 0));
+    const QVector<Task> tasks = m_tasks.allTasks();
+    const QVector<CalendarEvent> events = m_calendar.eventsBetween(rangeStart, rangeEnd);
+    const QVector<TimeBlock> blocks = m_blocks.blocksBetween(rangeStart, rangeEnd);
+
+    QHash<int, Task> taskById;
+    for (const Task& task : tasks) {
+        taskById.insert(task.id, task);
+    }
+
+    QVariantList days;
+    days.reserve(42);
+    for (int offset = 0; offset < 42; ++offset) {
+        const QDate date = gridStart.addDays(offset);
+        const QDateTime dayStart(date, QTime(0, 0));
+        const QDateTime dayEnd(date.addDays(1), QTime(0, 0));
+        int plannedMinutes = 0;
+        int completedMinutes = 0;
+        QVariantList entries;
+
+        for (const TimeBlock& block : blocks) {
+            if (block.end <= dayStart || block.start >= dayEnd || !taskById.contains(block.taskId)) {
+                continue;
+            }
+            const QDateTime overlapStart = qMax(block.start, dayStart);
+            const QDateTime overlapEnd = qMin(block.end, dayEnd);
+            const int minutes = qMax(0, static_cast<int>(overlapStart.secsTo(overlapEnd) / 60));
+            plannedMinutes += minutes;
+            if (block.completedAt.isValid()) {
+                completedMinutes += minutes;
+            }
+            const Task task = taskById.value(block.taskId);
+            entries.push_back(QVariantMap {
+                {QStringLiteral("id"), block.id},
+                {QStringLiteral("taskId"), block.taskId},
+                {QStringLiteral("title"), task.title},
+                {QStringLiteral("timeText"), block.start.time().toString(QStringLiteral("HH:mm"))},
+                {QStringLiteral("color"), colorForPriority(task.priority, task.categoryColor)},
+                {QStringLiteral("kind"), QStringLiteral("task")},
+                {QStringLiteral("completed"), block.completedAt.isValid()}
+            });
+        }
+
+        for (const CalendarEvent& event : events) {
+            if (event.end <= dayStart || event.start >= dayEnd) {
+                continue;
+            }
+            entries.push_back(QVariantMap {
+                {QStringLiteral("id"), -event.id},
+                {QStringLiteral("taskId"), 0},
+                {QStringLiteral("title"), event.title},
+                {QStringLiteral("timeText"), event.start.time().toString(QStringLiteral("HH:mm"))},
+                {QStringLiteral("color"), event.categoryColor.isEmpty() ? QStringLiteral("#3F4658") : event.categoryColor},
+                {QStringLiteral("kind"), QStringLiteral("event")},
+                {QStringLiteral("completed"), false}
+            });
+        }
+
+        std::sort(entries.begin(), entries.end(), [](const QVariant& left, const QVariant& right) {
+            const QVariantMap a = left.toMap();
+            const QVariantMap b = right.toMap();
+            if (a.value(QStringLiteral("kind")) != b.value(QStringLiteral("kind"))) {
+                return a.value(QStringLiteral("kind")).toString() == QStringLiteral("task");
+            }
+            if (a.value(QStringLiteral("completed")) != b.value(QStringLiteral("completed"))) {
+                return !a.value(QStringLiteral("completed")).toBool();
+            }
+            return a.value(QStringLiteral("timeText")).toString() < b.value(QStringLiteral("timeText")).toString();
+        });
+
+        days.push_back(QVariantMap {
+            {QStringLiteral("dateText"), date.toString(QStringLiteral("yyyy-MM-dd"))},
+            {QStringLiteral("day"), date.day()},
+            {QStringLiteral("inMonth"), date.month() == month},
+            {QStringLiteral("isToday"), date == QDate::currentDate()},
+            {QStringLiteral("isSelected"), date == m_selectedDate},
+            {QStringLiteral("plannedMinutes"), plannedMinutes},
+            {QStringLiteral("completedMinutes"), completedMinutes},
+            {QStringLiteral("completionRate"), plannedMinutes > 0 ? qRound(completedMinutes * 100.0 / plannedMinutes) : 0},
+            {QStringLiteral("entries"), entries},
+            {QStringLiteral("moreCount"), qMax(0, entries.size() - 3)}
+        });
+    }
+    return days;
 }
 
 QVariantMap ScheduleService::updateCategoryColor(const QString& categoryName, const QString& color)
@@ -1805,13 +1946,21 @@ ScheduleWindow ScheduleService::currentWindow() const
     return {QDateTime(today, QTime(0, 0)), QDateTime(today.addDays(7), QTime(23, 59, 59))};
 }
 
+ScheduleWindow ScheduleService::displayWindow() const
+{
+    return {
+        QDateTime(m_selectedDate, QTime(0, 0)),
+        QDateTime(m_selectedDate.addDays(7), QTime(0, 0))
+    };
+}
+
 void ScheduleService::reload()
 {
-    const ScheduleWindow window = currentWindow();
+    const ScheduleWindow window = displayWindow();
     const QVector<Task> tasks = m_tasks.allTasks();
     const QVector<CalendarEvent> events = m_calendar.eventsBetween(window.start, window.end);
     const QVector<TimeBlock> blocks = m_blocks.blocksBetween(window.start, window.end);
-    m_taskModel.setTasks(tasks);
+    m_taskModel.setTasks(m_tasks.activeTasks());
     rebuildTimeline(tasks, events, blocks);
     rebuildCapacityStats(blocks);
     emit dataChanged();
@@ -1852,7 +2001,7 @@ void ScheduleService::rebuildCapacityStats(const QVector<TimeBlock>& blocks)
 
 void ScheduleService::rebuildTimeline(const QVector<Task>& tasks, const QVector<CalendarEvent>& events, const QVector<TimeBlock>& blocks)
 {
-    const ScheduleWindow window = currentWindow();
+    const ScheduleWindow window = displayWindow();
     QHash<int, Task> taskById;
     QHash<int, int> blockTotalsByTask;
     QHash<int, int> blockOrdinalsById;
@@ -2023,6 +2172,7 @@ QVariantMap ScheduleService::taskToMap(const Task& task) const
         {"idealChunkMinutes", task.idealChunkMinutes},
         {"effortLevel", task.effortLevel},
         {"scheduleStatus", static_cast<int>(task.scheduleStatus)},
+        {"status", static_cast<int>(task.status)},
         {"categoryColor", colorForPriority(task.priority, task.categoryColor)},
         {"completedAt", task.completedAt.isValid() ? deadlineText(task.completedAt) : QString()}
     };
@@ -2058,6 +2208,7 @@ QVariantMap ScheduleService::eventToDetailMap(const TimelineItem& item) const
         {"canResize", item.canResize},
         {"canLock", item.canLock},
         {"blockOrdinal", 1},
-        {"blockTotal", 1}
+        {"blockTotal", 1},
+        {"completed", false}
     };
 }

@@ -15,6 +15,7 @@ Rectangle {
     property string draftCategoryColor: "#6FD6A7"
     property int rangeStartDayIndex: 0
     property int rangeEndDayIndex: 0
+    property bool readOnly: false
     readonly property bool hasTask: task && task.id
     readonly property bool isEvent: hasTask && task.kind === "event"
     readonly property var preferredValues: ["morning", "afternoon", "evening"]
@@ -112,7 +113,7 @@ Rectangle {
             }
 
             RowLayout {
-                visible: root.hasTask && root.task.canLock !== false
+                visible: root.hasTask && root.task.canLock !== false && !root.readOnly
                 spacing: 7
 
                 Text {
@@ -633,17 +634,15 @@ Rectangle {
 
             ActionButton {
                 Layout.fillWidth: true
-                text: qsTr("删除")
+                text: qsTr("移除任务")
                 danger: true
-                onClicked: {
-                    var result = ScheduleService.deleteTask(root.task.id)
-                    statusText.text = result.message || ""
-                }
+                visible: !root.readOnly
+                onClicked: deleteChoicePopup.open()
             }
         }
 
         ActionButton {
-            visible: root.hasTask
+            visible: root.hasTask && !root.readOnly
             Layout.fillWidth: true
             text: qsTr("保存时间块")
             onClicked: {
@@ -734,6 +733,67 @@ Rectangle {
 
                 statusText.color = "#A9F0C9"
                 statusText.text = qsTr("已保存并重排日历")
+            }
+        }
+
+        ActionButton {
+            visible: root.readOnly && root.hasTask && !root.isEvent && !root.task.completed
+            Layout.fillWidth: true
+            text: qsTr("补记为已完成")
+            onClicked: {
+                var result = ScheduleService.completeBlock(root.task.blockId || 0)
+                statusText.color = result.ok ? "#A9F0C9" : "#FFB09B"
+                statusText.text = result.message || ""
+            }
+        }
+    }
+
+    Popup {
+        id: deleteChoicePopup
+        width: 310
+        height: 220
+        modal: true
+        focus: true
+        anchors.centerIn: parent
+        closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+        background: Rectangle {
+            radius: 14
+            color: "#161B22"
+            border.width: 1
+            border.color: "#30384C"
+        }
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 18
+            spacing: 12
+            Text { text: qsTr("如何移除这个任务？"); color: "#E6EAF2"; font.pixelSize: 17; font.weight: Font.DemiBold }
+            Text {
+                Layout.fillWidth: true
+                text: qsTr("归档会保留历史日程；彻底删除会同时清除关联历史记录。")
+                color: "#9AA4B2"
+                font.pixelSize: 12
+                wrapMode: Text.WordWrap
+            }
+            Item { Layout.fillHeight: true }
+            ActionButton {
+                Layout.fillWidth: true
+                text: qsTr("归档并保留历史")
+                onClicked: {
+                    var result = ScheduleService.archiveTask(root.task.id)
+                    statusText.text = result.message || ""
+                    deleteChoicePopup.close()
+                }
+            }
+            ActionButton {
+                Layout.fillWidth: true
+                text: qsTr("彻底删除任务与历史")
+                danger: true
+                onClicked: {
+                    var result = ScheduleService.deleteTask(root.task.id)
+                    statusText.text = result.message || ""
+                    deleteChoicePopup.close()
+                }
             }
         }
     }

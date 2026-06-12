@@ -70,6 +70,7 @@ qt_add_qml_module(Chrona
         src/ui/qml/Main.qml
         src/ui/qml/pages/CalendarPage.qml
         src/ui/qml/pages/TimelinePage.qml
+        src/ui/qml/pages/MonthPage.qml
         src/ui/qml/panels/Sidebar.qml
         src/ui/qml/panels/TaskDetailPanel.qml
         src/ui/qml/panels/CurrentFocusPanel.qml

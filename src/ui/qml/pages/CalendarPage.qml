@@ -16,6 +16,7 @@ Item {
     property var aiDraft: ({})
     property var aiDrafts: []
     property bool aiDraftLoading: false
+    property bool historicalView: ScheduleService.selectedDateText !== Qt.formatDate(new Date(), "yyyy-MM-dd")
 
     function formatFocusTime(seconds) {
         var m = Math.floor(seconds / 60)
@@ -522,6 +523,7 @@ Item {
         }
         QuickAddBar {
             Layout.fillWidth: true
+            visible: !root.historicalView
             capacityStats: ScheduleService.capacityStats
             aiStatus: ScheduleService.aiStatus
             onRecommendationRequested: {
@@ -565,6 +567,47 @@ Item {
             model: ScheduleService.timelineModel
             minuteHeight: root.timelineMinuteHeight
             requestedDayColumnWidth: root.timelineColumnWidth
+            anchorDate: ScheduleService.selectedDateText
+            readOnly: root.historicalView
+        }
+
+        Rectangle {
+            visible: root.historicalView
+            Layout.fillWidth: true
+            Layout.preferredHeight: 46
+            radius: 10
+            color: "#171D2A"
+            border.width: 1
+            border.color: "#35405A"
+
+            RowLayout {
+                anchors.fill: parent
+                anchors.leftMargin: 14
+                anchors.rightMargin: 10
+                spacing: 10
+
+                Text {
+                    Layout.fillWidth: true
+                    text: qsTr("正在查看 %1 的日程，浏览模式不会改动排程").arg(ScheduleService.selectedDateText)
+                    color: "#AAB6CC"
+                    font.pixelSize: 12
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 88
+                    Layout.preferredHeight: 30
+                    radius: 8
+                    color: returnTodayMouse.containsMouse ? "#8B99FF" : "#6C63FF"
+                    Text { anchors.centerIn: parent; text: qsTr("回到今天"); color: "white"; font.pixelSize: 12; font.weight: Font.DemiBold }
+                    MouseArea {
+                        id: returnTodayMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: ScheduleService.setSelectedDate(Qt.formatDate(new Date(), "yyyy-MM-dd"))
+                    }
+                }
+            }
         }
     }
 

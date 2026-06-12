@@ -22,6 +22,7 @@ private slots:
     void taskCategoryAndColorPersist();
     void batchBlockFailureRollsBack();
     void deletingTaskCascadesToBlocks();
+    void archivingTaskPreservesBlocksAndRemovesItFromActiveTasks();
     void eventLockPersists();
     void scheduleFailureKeepsPreviousState();
     void backupRoundTripPreservesCoreData();
@@ -187,6 +188,27 @@ void DatabaseConsistencyTests::deletingTaskCascadesToBlocks()
     remove.addBindValue(taskId);
     QVERIFY(remove.exec());
     QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM time_blocks")), 0);
+}
+
+void DatabaseConsistencyTests::archivingTaskPreservesBlocksAndRemovesItFromActiveTasks()
+{
+    TaskRepository tasks(m_db);
+    QVERIFY(tasks.createTask(createTask(QStringLiteral("Historical task")), QStringLiteral("Study")));
+    const int taskId = tasks.allTasks().first().id;
+
+    TimeBlock block;
+    block.taskId = taskId;
+    block.start = QDateTime(QDate::currentDate().addDays(-40), QTime(9, 0));
+    block.end = block.start.addSecs(3600);
+    block.source = BlockSource::Locked;
+    TimeBlockRepository blocks(m_db);
+    QVERIFY(blocks.createBlock(block) > 0);
+
+    QVERIFY(tasks.archiveTask(taskId));
+    QCOMPARE(tasks.activeTasks().size(), 0);
+    QCOMPARE(tasks.allTasks().size(), 1);
+    QCOMPARE(tasks.allTasks().first().status, TaskStatus::Archived);
+    QCOMPARE(blocks.blocksBetween(block.start.addDays(-1), block.end.addDays(1)).size(), 1);
 }
 
 void DatabaseConsistencyTests::eventLockPersists()

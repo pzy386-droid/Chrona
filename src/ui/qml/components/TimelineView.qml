@@ -21,6 +21,8 @@ Rectangle {
     readonly property real dayColumnWidth: viewMode === "week" ? requestedDayColumnWidth : Math.max(320, width - rulerWidth)
     readonly property real timelineWidth: rulerWidth + dayCount * dayColumnWidth
     property alias flickable: flick
+    property string anchorDate: ScheduleService.selectedDateText
+    property bool readOnly: false
 
     radius: 8
     color: "#11151D"
@@ -59,10 +61,10 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             text: {
-                                var d = new Date()
+                                var d = new Date(root.anchorDate + "T00:00:00")
                                 d.setDate(d.getDate() + index)
                                 return root.viewMode === "day"
-                                    ? qsTr("今天")
+                                    ? Qt.formatDate(d, LocaleService.locale === "zh_CN" ? "M月d日 ddd" : "ddd, MMM d")
                                     : Qt.formatDate(d, LocaleService.locale === "zh_CN" ? "M月d日 ddd" : "ddd, MMM d")
                             }
                             color: index === 0 ? "#E6EAF2" : "#9AA4B2"
@@ -203,9 +205,9 @@ Rectangle {
                         locked: model.isLocked
                         eventLocked: model.isEventLocked
                         completed: model.completed
-                        canMove: model.canMove
-                        canResize: model.canResize
-                        canLock: model.canLock
+                        canMove: model.canMove && !root.readOnly
+                        canResize: model.canResize && !root.readOnly
+                        canLock: model.canLock && !root.readOnly
                         selected: model.selected
                         blockOrdinal: model.blockOrdinal
                         blockTotal: model.blockTotal

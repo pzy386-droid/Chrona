@@ -315,6 +315,21 @@ bool TaskRepository::completeTask(int taskId) const
     return db.commit();
 }
 
+bool TaskRepository::archiveTask(int taskId) const
+{
+    if (taskId <= 0) {
+        return false;
+    }
+
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(
+        "UPDATE tasks SET status = ?, auto_schedule_enabled = 0, updated_at = ? WHERE id = ?"));
+    query.addBindValue(static_cast<int>(TaskStatus::Archived));
+    query.addBindValue(toIso(QDateTime::currentDateTime()));
+    query.addBindValue(taskId);
+    return query.exec() && query.numRowsAffected() == 1;
+}
+
 bool TaskRepository::deleteTask(int taskId) const
 {
     if (taskId <= 0) {

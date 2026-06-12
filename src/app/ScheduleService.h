@@ -27,6 +27,7 @@ class ScheduleService : public QObject {
     Q_PROPERTY(QVariantList scheduleIssues READ scheduleIssues NOTIFY dataChanged)
     Q_PROPERTY(bool demoModeEnabled READ demoModeEnabled NOTIFY dataChanged)
     Q_PROPERTY(QString persistenceError READ persistenceError NOTIFY dataChanged)
+    Q_PROPERTY(QString selectedDateText READ selectedDateText NOTIFY selectedDateChanged)
 
 public:
     ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks,
@@ -44,6 +45,7 @@ public:
     QVariantList scheduleIssues() const;
     bool demoModeEnabled() const;
     QString persistenceError() const;
+    QString selectedDateText() const;
 
     Q_INVOKABLE QVariantMap reschedule();
     Q_INVOKABLE void selectTask(int taskId);
@@ -56,7 +58,10 @@ public:
     Q_INVOKABLE QVariantMap updateTask(int taskId, const QString& title, const QString& notes, const QString& deadlineText, int estimatedMinutes, int priority,
                                        const QString& categoryName, const QString& preferredStudyTime, bool autoScheduleEnabled, int deadlineType,
                                        int minChunkMinutes, int idealChunkMinutes, int effortLevel);
+    Q_INVOKABLE QVariantMap archiveTask(int taskId);
     Q_INVOKABLE QVariantMap deleteTask(int taskId);
+    Q_INVOKABLE QVariantMap setSelectedDate(const QString& dateText);
+    Q_INVOKABLE QVariantList monthOverview(int year, int month) const;
     Q_INVOKABLE QVariantMap updateCategoryColor(const QString& categoryName, const QString& color);
     Q_INVOKABLE QVariantMap addFixedEvent(const QString& title, int dayOffset, int startMinute, int durationMinutes, bool locked, const QString& categoryName);
     Q_INVOKABLE bool setCategoryColor(const QString& categoryName, const QString& color);
@@ -89,10 +94,12 @@ public:
 signals:
     void dataChanged();
     void selectedTaskChanged();
+    void selectedDateChanged();
     void taskDraftReady(const QVariantMap& result);
 
 private:
     ScheduleWindow currentWindow() const;
+    ScheduleWindow displayWindow() const;
     int normalizeManualBlockBackedTasks(const ScheduleWindow& window, const QVector<TimeBlock>& manualBlocks);
     void reload();
     void rebuildTimeline(const QVector<Task>& tasks, const QVector<CalendarEvent>& events, const QVector<TimeBlock>& blocks);
@@ -124,4 +131,5 @@ private:
     int m_selectedTaskId = 0;
     int m_selectedBlockId = 0;
     QString m_persistenceError;
+    QDate m_selectedDate = QDate::currentDate();
 };

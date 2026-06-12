@@ -29,6 +29,7 @@ public:
     bool updateCategoryColor(const QString& categoryName, const QString& color) const;
     bool updateScheduleStatuses(const QVector<int>& scheduledTaskIds, const QVector<int>& couldNotFitTaskIds) const;
     bool completeTask(int taskId) const;
+    bool archiveTask(int taskId) const;
     bool deleteTask(int taskId) const;
     QString lastError() const;
 
