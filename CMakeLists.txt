@@ -1,16 +1,18 @@
 cmake_minimum_required(VERSION 3.21)
 
-project(Chrona VERSION 0.1.0 LANGUAGES CXX)
+project(Chrona VERSION 0.3.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTools Test)
+find_package(Qt6 6.6 REQUIRED COMPONENTS Quick Sql Concurrent Network LinguistTools)
 
 qt_standard_project_setup(REQUIRES 6.6)
 
-qt_policy(SET QTP0004 NEW)
+if(Qt6_VERSION VERSION_GREATER_EQUAL 6.8)
+    qt_policy(SET QTP0004 NEW)
+endif()
 
 qt_add_executable(Chrona
     src/main.cpp
@@ -42,6 +44,8 @@ qt_add_executable(Chrona
     src/core/scheduler/TimeBlockGenerator.h
     src/database/Database.cpp
     src/database/Database.h
+    src/database/BackupService.cpp
+    src/database/BackupService.h
     src/database/Migrations.cpp
     src/database/Migrations.h
     src/database/Repositories.cpp
@@ -66,6 +70,7 @@ qt_add_qml_module(Chrona
         src/ui/qml/Main.qml
         src/ui/qml/pages/CalendarPage.qml
         src/ui/qml/pages/TimelinePage.qml
+        src/ui/qml/pages/MonthPage.qml
         src/ui/qml/panels/Sidebar.qml
         src/ui/qml/panels/TaskDetailPanel.qml
         src/ui/qml/panels/CurrentFocusPanel.qml
@@ -101,19 +106,44 @@ if(WIN32)
     set_target_properties(Chrona PROPERTIES WIN32_EXECUTABLE TRUE)
 endif()
 
-enable_testing()
+include(CTest)
+if(BUILD_TESTING)
+    find_package(Qt6 6.6 REQUIRED COMPONENTS Test)
+    qt_add_executable(ChronaDatabaseTests
+        tests/DatabaseConsistencyTests.cpp
+        src/database/BackupService.cpp
+        src/database/BackupService.h
+        src/database/Migrations.cpp
+        src/database/Migrations.h
+        src/database/Repositories.cpp
+        src/database/Repositories.h
+    )
 
-add_executable(TaskSchedulerTest
-    tests/TaskSchedulerTest.cpp
-    src/core/scheduler/CapacityAnalyzer.cpp
-    src/core/scheduler/CapacityAnalyzer.h
-    src/core/scheduler/PriorityEvaluator.cpp
-    src/core/scheduler/PriorityEvaluator.h
-    src/core/scheduler/TaskScheduler.cpp
-    src/core/scheduler/TaskScheduler.h
-    src/core/scheduler/TimeBlockGenerator.cpp
-    src/core/scheduler/TimeBlockGenerator.h
-)
-target_include_directories(TaskSchedulerTest PRIVATE src)
-target_link_libraries(TaskSchedulerTest PRIVATE Qt6::Core Qt6::Test)
-add_test(NAME TaskSchedulerTest COMMAND TaskSchedulerTest)
+    target_include_directories(ChronaDatabaseTests PRIVATE src)
+    target_link_libraries(ChronaDatabaseTests PRIVATE Qt6::Core Qt6::Sql Qt6::Test)
+    add_test(NAME ChronaDatabaseTests COMMAND ChronaDatabaseTests)
+
+    qt_add_executable(ChronaNLPTests
+        tests/NLPTaskParserTests.cpp
+        src/managers/NLPTaskParser.cpp
+        src/managers/NLPTaskParser.h
+    )
+    target_include_directories(ChronaNLPTests PRIVATE src)
+    target_link_libraries(ChronaNLPTests PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME ChronaNLPTests COMMAND ChronaNLPTests)
+
+    qt_add_executable(TaskSchedulerTest
+        tests/TaskSchedulerTest.cpp
+        src/core/scheduler/CapacityAnalyzer.cpp
+        src/core/scheduler/CapacityAnalyzer.h
+        src/core/scheduler/PriorityEvaluator.cpp
+        src/core/scheduler/PriorityEvaluator.h
+        src/core/scheduler/TaskScheduler.cpp
+        src/core/scheduler/TaskScheduler.h
+        src/core/scheduler/TimeBlockGenerator.cpp
+        src/core/scheduler/TimeBlockGenerator.h
+    )
+    target_include_directories(TaskSchedulerTest PRIVATE src)
+    target_link_libraries(TaskSchedulerTest PRIVATE Qt6::Core Qt6::Test)
+    add_test(NAME TaskSchedulerTest COMMAND TaskSchedulerTest)
+endif()

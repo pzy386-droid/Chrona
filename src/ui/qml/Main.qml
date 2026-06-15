@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Chrona
 import "./panels"
+
 ApplicationWindow {
     id: window
     width: 1440
@@ -10,9 +11,19 @@ ApplicationWindow {
     visible: true
     title: "Chrona"
     color: "#0F1117"
+
     property bool detailOpen: true
+    property string currentPage: "timeline"
+
+    function scrollToFocusBlock() {
+        if (timelinePage && typeof timelinePage.scrollToFocusBlock === 'function') {
+            timelinePage.scrollToFocusBlock()
+        }
+    }
+
     Connections {
         target: ScheduleService
+
         function onSelectedTaskChanged() {
             window.detailOpen = true
         }
@@ -30,33 +41,68 @@ ApplicationWindow {
                 id: sidebar
                 Layout.fillHeight: true
                 Layout.preferredWidth: collapsed ? 76 : 248
+                scrollToFocus: window.scrollToFocusBlock
+                currentPage: window.currentPage
+                onNavigateRequested: function(page) {
+                    window.currentPage = page
+                    if (page === "month") {
+                        window.detailOpen = false
+                    }
+                }
+                onDailyPlanRequested: {
+                    dailyPlanOverlay.mode = "daily"
+                    dailyPlanOverlay.visible = true
+                }
+
                 Behavior on Layout.preferredWidth {
                     NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
                 }
             }
 
-            TimelinePage {
+            StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                leftPadding: 24
-                rightPadding: 20
+                currentIndex: window.currentPage === "month" ? 1 : 0
+
+                TimelinePage {
+                    id: timelinePage
+                    leftPadding: 24
+                    rightPadding: 20
+                }
+
+                MonthPage {
+                    id: monthPage
+                    onDayRequested: function(dateText) {
+                        ScheduleService.setSelectedDate(dateText)
+                        timelinePage.viewMode = "day"
+                        window.currentPage = "timeline"
+                        window.detailOpen = false
+                    }
+                }
             }
 
             TaskDetailPanel {
                 id: detailPanel
                 Layout.fillHeight: true
-                Layout.preferredWidth: window.detailOpen ? 332 : 0
+                Layout.preferredWidth: window.detailOpen && window.currentPage === "timeline" ? 332 : 0
                 clip: true
-                opacity: window.detailOpen ? 1 : 0
+                opacity: window.detailOpen && window.currentPage === "timeline" ? 1 : 0
                 task: ScheduleService.selectedDetail
+                readOnly: ScheduleService.selectedDateText !== Qt.formatDate(new Date(), "yyyy-MM-dd")
                 onCloseRequested: window.detailOpen = false
-                Behavior on Layout.preferredWidth { NumberAnimation { duration: 240; easing.type: Easing.OutCubic } }
-                Behavior on opacity { NumberAnimation { duration: 160 } }
+
+                Behavior on Layout.preferredWidth {
+                    NumberAnimation { duration: 240; easing.type: Easing.OutCubic }
+                }
+
+                Behavior on opacity {
+                    NumberAnimation { duration: 160 }
+                }
             }
         }
 
         Rectangle {
-            visible: !window.detailOpen
+            visible: !window.detailOpen && window.currentPage === "timeline"
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: 16
@@ -70,7 +116,7 @@ ApplicationWindow {
 
             Text {
                 anchors.centerIn: parent
-                text: "‹"
+                text: "›"
                 color: "#E6EAF2"
                 font.pixelSize: 24
                 font.weight: Font.DemiBold
@@ -84,15 +130,17 @@ ApplicationWindow {
                 onClicked: window.detailOpen = true
             }
         }
-       DailyPlanOverlay {
-        id: dailyPlanOverlay
-        anchors.fill: parent // 填满整个窗口
-        visible: true        // ⚠️ 调试阶段先设为 true，方便你马上看到效果调 UI
+
+        DailyPlanOverlay {
+            id: dailyPlanOverlay
+            anchors.fill: parent
+            visible: false
+        }
+
+        EveningReviewOverlay {
+            id: eveningReviewOverlay
+            anchors.fill: parent
+            visible: false
+        }
     }
-       EveningReviewOverlay {
-               id: eveningReviewOverlay
-               anchors.fill: parent
-               visible: false // 默认隐藏，由 Sidebar 里的按钮唤醒
-           }
-}
 }

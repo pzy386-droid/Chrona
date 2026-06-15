@@ -25,4 +25,5 @@ struct Task {
     std::optional<int> categoryId;
     QString categoryName;
     QString categoryColor;
+    QDateTime completedAt;
 };

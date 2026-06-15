@@ -7,6 +7,22 @@ NoopAIService::NoopAIService(QObject* parent)
 {
 }
 
+QString NoopAIService::providerName() const
+{
+    return QStringLiteral("noop");
+}
+
+bool NoopAIService::isConfigured() const
+{
+    return false;
+}
+
+bool NoopAIService::setApiKey(const QString& apiKey)
+{
+    Q_UNUSED(apiKey)
+    return false;
+}
+
 QFuture<AIParseResult> NoopAIService::parseNaturalLanguageTask(const QString& input)
 {
     Q_UNUSED(input)

@@ -10,6 +10,9 @@ public:
 
     QFuture<AIParseResult> parseNaturalLanguageTask(const QString& input) override;
     QFuture<AISuggestionResult> suggestScheduleChanges(const ScheduleContext& context) override;
+    QString providerName() const override;
+    bool isConfigured() const override;
+    bool setApiKey(const QString& apiKey) override;
 
 private:
     QString m_apiKey;

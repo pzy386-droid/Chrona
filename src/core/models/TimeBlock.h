@@ -12,6 +12,8 @@ struct TimeBlock {
     BlockSource source = BlockSource::Auto;
     int scheduleRunId = 0;
     QString createdAt;
+    QString explanation;
+    QDateTime completedAt;
 
     QJsonObject toJson() const;
     static TimeBlock fromJson(const QJsonObject& object);

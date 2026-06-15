@@ -20,7 +20,12 @@ struct ScheduleResult {
         QString reason;
         QString fixHint;
 
+        int estimatedMinutes = 0;
+        int scheduledMinutes = 0;
         int remainingMinutes = 0;
+        QDateTime deadline;
+        int priority = 1;
+        QString categoryName;
     };
     QVector<Issue> issues;
 };

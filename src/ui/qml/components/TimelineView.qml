@@ -7,24 +7,22 @@ Rectangle {
     id: root
     property string viewMode: "week"
     property var model
-    property var frameModel: []
     property real requestedDayColumnWidth: 190
     readonly property int dayStartMinute: 0
     readonly property int dayEndMinute: 24 * 60
     readonly property int dayCount: viewMode === "week" ? 7 : 1
     property real minuteHeight: 1.18
+    readonly property bool fitFullDay: minuteHeight <= 0.52
+    readonly property real fitMinuteHeight: Math.max(0.22, (height - headerHeight - 30) / Math.max(1, dayEndMinute - dayStartMinute))
+    readonly property real effectiveMinuteHeight: fitFullDay ? fitMinuteHeight : minuteHeight
+    readonly property int hourLabelStep: fitFullDay ? 2 : (effectiveMinuteHeight < 0.58 ? 2 : 1)
     readonly property int rulerWidth: 54
     readonly property int headerHeight: 44
     readonly property real dayColumnWidth: viewMode === "week" ? requestedDayColumnWidth : Math.max(320, width - rulerWidth)
     readonly property real timelineWidth: rulerWidth + dayCount * dayColumnWidth
-    signal timelineMessage(string kind, string message)
-
-    function clockText(minute) {
-        var clamped = Math.max(0, Math.min(24 * 60, minute))
-        var hour = Math.floor(clamped / 60)
-        var min = clamped % 60
-        return String(hour).padStart(2, "0") + ":" + String(min).padStart(2, "0")
-    }
+    property alias flickable: flick
+    property string anchorDate: ScheduleService.selectedDateText
+    property bool readOnly: false
 
     radius: 8
     color: "#11151D"
@@ -63,10 +61,10 @@ Rectangle {
                         Text {
                             anchors.centerIn: parent
                             text: {
-                                var d = new Date()
+                                var d = new Date(root.anchorDate + "T00:00:00")
                                 d.setDate(d.getDate() + index)
                                 return root.viewMode === "day"
-                                    ? qsTr("今天")
+                                    ? Qt.formatDate(d, LocaleService.locale === "zh_CN" ? "M月d日 ddd" : "ddd, MMM d")
                                     : Qt.formatDate(d, LocaleService.locale === "zh_CN" ? "M月d日 ddd" : "ddd, MMM d")
                             }
                             color: index === 0 ? "#E6EAF2" : "#9AA4B2"
@@ -90,13 +88,13 @@ Rectangle {
             Layout.fillWidth: true
             Layout.fillHeight: true
             contentWidth: root.timelineWidth
-            contentHeight: (root.dayEndMinute - root.dayStartMinute) * root.minuteHeight + 28
+            contentHeight: (root.dayEndMinute - root.dayStartMinute) * root.effectiveMinuteHeight + 28
             clip: true
             boundsBehavior: Flickable.StopAtBounds
             interactive: true
             flickableDirection: Flickable.HorizontalAndVerticalFlick
-            Component.onCompleted: contentY = 8 * 60 * root.minuteHeight
-            onContentHeightChanged: contentY = Math.min(contentY, Math.max(0, contentHeight - height))
+            Component.onCompleted: contentY = root.fitFullDay ? 0 : 8 * 60 * root.effectiveMinuteHeight
+            onContentHeightChanged: contentY = root.fitFullDay ? 0 : Math.min(contentY, Math.max(0, contentHeight - height))
 
             Item {
                 id: canvas
@@ -107,23 +105,29 @@ Rectangle {
                     model: 25
 
                     delegate: Item {
+                        readonly property bool majorTick: index % root.hourLabelStep === 0
                         width: canvas.width
                         height: 1
-                        y: index * 60 * root.minuteHeight
+                        y: index * 60 * root.effectiveMinuteHeight
 
                         Text {
                             x: 12
                             y: -8
+                            visible: majorTick
                             text: String(index).padStart(2, "0") + ":00"
-                            color: "#596276"
-                            font.pixelSize: 11
+                            color: majorTick ? "#6E7890" : "#3D4557"
+                            font.pixelSize: root.hourLabelStep >= 4 ? 10 : 11
+                            opacity: majorTick ? 1 : 0
+                            Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         }
 
                         Rectangle {
                             x: root.rulerWidth
                             width: canvas.width - root.rulerWidth
                             height: 1
-                            color: index === 0 ? "#2A3142" : "#1D2330"
+                            color: index === 0 ? "#2A3142" : (majorTick ? "#202738" : "#171D29")
+                            opacity: majorTick ? 1 : 0.54
+                            Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
                         }
                     }
                 }
@@ -156,7 +160,7 @@ Rectangle {
                     x: root.rulerWidth
                     y: {
                         var now = new Date()
-                        return (now.getHours() * 60 + now.getMinutes() - root.dayStartMinute) * root.minuteHeight
+                        return (now.getHours() * 60 + now.getMinutes() - root.dayStartMinute) * root.effectiveMinuteHeight
                     }
                     width: canvas.width - root.rulerWidth
                     height: 2
@@ -165,60 +169,14 @@ Rectangle {
                 }
 
                 MouseArea {
-                    id: emptySlotMouse
                     anchors.fill: parent
+                    z: 5
                     acceptedButtons: Qt.LeftButton
-                    z: 0
-                    onClicked: function(mouse) {
-                        if (mouse.x < root.rulerWidth) {
-                            return
-                        }
-                        var rawDay = (mouse.x - root.rulerWidth) / root.dayColumnWidth
-                        var nextDay = root.viewMode === "week"
-                            ? Math.max(0, Math.min(root.dayCount - 1, Math.floor(rawDay)))
-                            : 0
-                        var rawMinute = root.dayStartMinute + mouse.y / root.minuteHeight
-                        var startMinute = Math.max(root.dayStartMinute, Math.min(root.dayEndMinute - 15, Math.round(rawMinute / 15) * 15))
-                        var duration = Math.min(60, root.dayEndMinute - startMinute)
-                        var result = ScheduleService.createSelectedTaskBlock(nextDay, root.clockText(startMinute), root.clockText(startMinute + duration))
-                        root.timelineMessage(result.ok ? "success" : "danger", result.message || (result.ok ? "Time block created" : "Could not create time block"))
-                    }
-                }
-
-                Repeater {
-                    model: root.frameModel
-
-                    delegate: Rectangle {
-                        visible: modelData.enabled && modelData.dayIndex >= 0 && (
-                            root.viewMode === "week"
-                                ? modelData.dayIndex < 7
-                                : modelData.dayIndex === 0
-                        )
-                        x: (root.viewMode === "week" ? modelData.dayIndex : 0) * root.dayColumnWidth + root.rulerWidth + 3
-                        y: (modelData.startMinute - root.dayStartMinute) * root.minuteHeight
-                        width: Math.max(120, root.dayColumnWidth - 6)
-                        height: Math.max(24, modelData.durationMinutes * root.minuteHeight)
-                        radius: 8
-                        color: modelData.color || "#7C8CFF"
-                        opacity: 0.12
-                        border.width: 1
-                        border.color: modelData.color || "#7C8CFF"
-
-                        Text {
-                            anchors.left: parent.left
-                            anchors.right: parent.right
-                            anchors.top: parent.top
-                            anchors.leftMargin: 8
-                            anchors.rightMargin: 8
-                            anchors.topMargin: 6
-                            text: (modelData.name || "Study Frame") + (modelData.categoryName ? " · " + modelData.categoryName : "")
-                            color: "#C6CFFF"
-                            opacity: 0.74
-                            font.pixelSize: 11
-                            font.weight: Font.DemiBold
-                            elide: Text.ElideRight
-                        }
-                    }
+                    hoverEnabled: false
+                    propagateComposedEvents: false
+                    preventStealing: false
+                    onPressed: ScheduleService.clearSelection()
+                    onClicked: ScheduleService.clearSelection()
                 }
 
                 Repeater {
@@ -226,48 +184,62 @@ Rectangle {
 
                     delegate: TimeBlock {
                         id: blockDelegate
-                        visible: root.viewMode === "week"
+                        z: 20
+                        visible: !model.hiddenInSpan && (root.viewMode === "week"
                             ? model.dayIndex >= 0 && model.dayIndex < 7
-                            : model.dayIndex === 0
+                            : model.dayIndex === 0)
                         blockId: model.id
                         taskId: model.taskId
                         title: model.title
                         subtitle: model.subtitle
+                        explanation: model.explanation
                         timeRange: model.timeRange
                         dayIndex: root.viewMode === "week" ? model.dayIndex : 0
                         startMinute: model.startMinute
                         durationMinutes: model.durationMinutes
                         priority: model.priority
                         accentColor: model.color
+                        kind: model.kind
+                        source: model.source
                         event: model.isEvent
                         locked: model.isLocked
                         eventLocked: model.isEventLocked
+                        completed: model.completed
+                        canMove: model.canMove && !root.readOnly
+                        canResize: model.canResize && !root.readOnly
+                        canLock: model.canLock && !root.readOnly
                         selected: model.selected
                         blockOrdinal: model.blockOrdinal
                         blockTotal: model.blockTotal
+                        spanDays: model.spanDays || 1
                         dayWidth: root.dayColumnWidth
-                        minuteHeight: root.minuteHeight
+                        minuteHeight: root.effectiveMinuteHeight
                         timelineLeft: root.rulerWidth
                         horizontalInset: 5
                         dayStartMinute: root.dayStartMinute
                         dayEndMinute: root.dayEndMinute
                         dayCount: root.dayCount
                         x: (root.viewMode === "week" ? model.dayIndex : 0) * root.dayColumnWidth + root.rulerWidth + 5
-                        y: (model.startMinute - root.dayStartMinute) * root.minuteHeight
-                        width: Math.max(120, root.dayColumnWidth - 10)
-                        height: Math.max(30, (blockDelegate.resizeActive ? blockDelegate.resizePreviewDuration : model.durationMinutes) * root.minuteHeight - 4)
+                        y: ((blockDelegate.resizeActive && blockDelegate.resizeFromTop
+                             ? blockDelegate.resizePreviewStartMinute
+                             : model.startMinute) - root.dayStartMinute) * root.effectiveMinuteHeight
+                        width: Math.max(120, root.dayColumnWidth * (blockDelegate.spanResizeActive
+                            ? blockDelegate.spanPreviewVisualDays
+                            : (model.spanDays || 1)) - 10)
+                        height: Math.max(root.fitFullDay ? 18 : 30, (blockDelegate.resizeActive ? blockDelegate.resizePreviewDuration : model.durationMinutes) * root.effectiveMinuteHeight - 4)
                         onMoveRequested: function(blockId, dayIndex, startMinute, durationMinutes) {
-                            var result = ScheduleService.moveTimelineItemWithResult(blockId, model.isEvent, dayIndex, startMinute, durationMinutes)
-                            if (!result.ok) {
+                            var ok = ScheduleService.moveTimelineItem(blockId, dayIndex, startMinute, durationMinutes)
+                            if (!ok) {
                                 x = (root.viewMode === "week" ? model.dayIndex : 0) * root.dayColumnWidth + root.rulerWidth + 5
-                                y = (model.startMinute - root.dayStartMinute) * root.minuteHeight
-                                height = Math.max(30, model.durationMinutes * root.minuteHeight - 4)
-                                root.timelineMessage("danger", result.message || "Move failed")
-                            } else if (result.message) {
-                                root.timelineMessage("success", result.message)
+                                y = (model.startMinute - root.dayStartMinute) * root.effectiveMinuteHeight
                             }
                         }
-                        onActionRejected: function(message) { root.timelineMessage("danger", message) }
+                        onResizeTimeRequested: function(blockId, startMinute, durationMinutes) {
+                            ScheduleService.resizeTimelineItemTime(blockId, startMinute, durationMinutes)
+                        }
+                        onSpanRequested: function(blockId, endDayIndex) {
+                            ScheduleService.stretchTimelineItemDays(blockId, endDayIndex)
+                        }
                         onSelectedItem: function(taskId, blockId) { ScheduleService.selectTimelineItem(taskId, blockId) }
                     }
                 }

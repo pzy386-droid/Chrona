@@ -50,12 +50,32 @@ QVariant TimelineModel::data(const QModelIndex& index, int role) const
         return item.locked;
     case IsEventLockedRole:
         return item.eventLocked;
+    case KindRole:
+        return item.kind;
+    case SourceRole:
+        return item.source;
+    case LockActiveRole:
+        return item.locked || item.eventLocked;
+    case CanMoveRole:
+        return item.canMove;
+    case CanResizeRole:
+        return item.canResize;
+    case CanLockRole:
+        return item.canLock;
     case SelectedRole:
         return item.id == m_selectedItemId || (m_selectedItemId == 0 && item.taskId != 0 && item.taskId == m_selectedTaskId);
     case BlockOrdinalRole:
         return item.blockOrdinal;
     case BlockTotalRole:
         return item.blockTotal;
+    case SpanDaysRole:
+        return item.spanDays;
+    case HiddenInSpanRole:
+        return item.hiddenInSpan;
+    case ExplanationRole:
+        return item.explanation;
+    case CompletedRole:
+        return item.completed;
     default:
         return {};
     }
@@ -79,9 +99,19 @@ QHash<int, QByteArray> TimelineModel::roleNames() const
         {IsEventRole, "isEvent"},
         {IsLockedRole, "isLocked"},
         {IsEventLockedRole, "isEventLocked"},
+        {KindRole, "kind"},
+        {SourceRole, "source"},
+        {LockActiveRole, "lockActive"},
+        {CanMoveRole, "canMove"},
+        {CanResizeRole, "canResize"},
+        {CanLockRole, "canLock"},
         {SelectedRole, "selected"},
         {BlockOrdinalRole, "blockOrdinal"},
-        {BlockTotalRole, "blockTotal"}
+        {BlockTotalRole, "blockTotal"},
+        {SpanDaysRole, "spanDays"},
+        {HiddenInSpanRole, "hiddenInSpan"},
+        {ExplanationRole, "explanation"},
+        {CompletedRole, "completed"}
     };
 }
 
