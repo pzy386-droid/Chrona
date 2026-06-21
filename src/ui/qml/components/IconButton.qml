@@ -10,14 +10,14 @@ Rectangle {
     width: 32
     height: 32
     radius: 8
-    color: mouse.containsMouse ? "#232A3A" : "transparent"
+    color: mouse.containsMouse ? Theme.surfaceHover : "transparent"
 
     Behavior on color { ColorAnimation { duration: 140 } }
 
     Text {
         anchors.centerIn: parent
         text: root.iconText
-        color: "#9AA4B2"
+        color: Theme.secondaryText
         font.pixelSize: 14
         font.weight: Font.DemiBold
     }

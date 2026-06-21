@@ -22,6 +22,7 @@ bool AppController::initialize(QQmlApplicationEngine* engine)
     }
 
     m_localeService = std::make_unique<LocaleService>(SettingsRepository(db));
+    m_themeService = std::make_unique<ThemeService>(SettingsRepository(db));
     const QString storedDeepSeekKey = settings.value(QStringLiteral("deepseekApiKey"));
     const QString deepSeekKey = storedDeepSeekKey.trimmed().isEmpty()
         ? QProcessEnvironment::systemEnvironment().value(QStringLiteral("DEEPSEEK_API_KEY"))
@@ -32,11 +33,13 @@ bool AppController::initialize(QQmlApplicationEngine* engine)
         StudyFrameRepository(db), SettingsRepository(db), BackupService(db), m_aiService.get());
 
     engine->rootContext()->setContextProperty(QStringLiteral("LocaleService"), m_localeService.get());
+    engine->rootContext()->setContextProperty(QStringLiteral("ThemeService"), m_themeService.get());
     engine->rootContext()->setContextProperty(QStringLiteral("ScheduleService"), m_scheduleService.get());
 
     QObject::connect(m_localeService.get(), &LocaleService::localeChanged, engine, &QQmlApplicationEngine::retranslate);
 
     m_localeService->load();
+    m_themeService->load();
     m_scheduleService->reschedule();
     return true;
 }

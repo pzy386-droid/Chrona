@@ -10,7 +10,7 @@ ApplicationWindow {
     height: 920
     visible: true
     title: "Chrona"
-    color: "#0F1117"
+    color: Theme.appBackground
 
     property bool detailOpen: true
     property string currentPage: "timeline"
@@ -23,7 +23,7 @@ ApplicationWindow {
 
     function scrollToFocusBlock() {
         showTodayTimeline("focus", function() {
-            if (timelinePage && typeof timelinePage.scrollToFocusBlock === 'function') {
+            if (timelinePage && typeof timelinePage.scrollToFocusBlock === "function") {
                 timelinePage.scrollToFocusBlock()
             }
         })
@@ -31,7 +31,7 @@ ApplicationWindow {
 
     function scrollToCourses() {
         showTodayTimeline("courses", function() {
-            if (timelinePage && typeof timelinePage.scrollToCourses === 'function') {
+            if (timelinePage && typeof timelinePage.scrollToCourses === "function") {
                 timelinePage.scrollToCourses()
             }
         })
@@ -47,7 +47,7 @@ ApplicationWindow {
 
     Rectangle {
         anchors.fill: parent
-        color: "#0F1117"
+        color: Theme.appBackground
 
         RowLayout {
             anchors.fill: parent
@@ -126,15 +126,15 @@ ApplicationWindow {
             width: 38
             height: 78
             radius: 12
-            color: panelOpenMouse.containsMouse ? "#202638" : "#161A23"
+            color: panelOpenMouse.containsMouse ? Theme.surfaceHover : Theme.surface
             border.width: 1
-            border.color: "#30384C"
+            border.color: Theme.border
             z: 100
 
             Text {
                 anchors.centerIn: parent
-                text: "›"
-                color: "#E6EAF2"
+                text: "\u203A"
+                color: Theme.primaryText
                 font.pixelSize: 24
                 font.weight: Font.DemiBold
             }

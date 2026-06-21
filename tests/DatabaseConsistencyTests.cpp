@@ -1,6 +1,7 @@
 #include "database/BackupService.h"
 #include "database/Migrations.h"
 #include "database/Repositories.h"
+#include "core/scheduler/CascadePlanner.h"
 
 #include <QFile>
 #include <QSqlError>
@@ -8,6 +9,8 @@
 #include <QTemporaryDir>
 #include <QTest>
 #include <QUuid>
+
+#include <algorithm>
 
 class DatabaseConsistencyTests : public QObject {
     Q_OBJECT
@@ -18,14 +21,27 @@ private slots:
 
     void freshDatabaseUsesCurrentSchema();
     void demoSeedCreatesCompleteDataset();
+    void legacyCalendarEventsMigrateToUnifiedBlocks();
     void legacyDatabaseMigratesWithoutDataLoss();
     void taskCategoryAndColorPersist();
+    void taskColorOverrideDoesNotMutateCategory();
     void batchBlockFailureRollsBack();
     void deletingTaskCascadesToBlocks();
     void archivingTaskPreservesBlocksAndRemovesItFromActiveTasks();
     void eventLockPersists();
     void scheduleFailureKeepsPreviousState();
     void backupRoundTripPreservesCoreData();
+    void cascadeResizePushesOverlappingBlocks();
+    void cascadeResizePreservesBlockDurations();
+    void cascadeResizeSkipsFixedIntervals();
+    void cascadeResizeRejectsDayOverflow();
+    void cascadeResizeUpPushesOverlappingBlocks();
+    void cascadeResizeUpSkipsFixedIntervals();
+    void cascadeResizeUpRejectsDayUnderflow();
+    void horizontalRelocationPrefersUpForLeftExtension();
+    void horizontalRelocationPrefersDownForRightExtension();
+    void horizontalRelocationAvoidsFixedAndOtherBlocks();
+    void horizontalRelocationRejectsFullDay();
 
 private:
     Task createTask(const QString& title = QStringLiteral("Test task"));
@@ -90,9 +106,31 @@ void DatabaseConsistencyTests::freshDatabaseUsesCurrentSchema()
 void DatabaseConsistencyTests::demoSeedCreatesCompleteDataset()
 {
     QVERIFY(Migrations::seed(m_db));
-    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM tasks")), 3);
-    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM calendar_events")), 3);
+    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM tasks")), 6);
+    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM calendar_events")), 0);
+    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM time_blocks")), 3);
     QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM study_frames")), 4);
+}
+
+void DatabaseConsistencyTests::legacyCalendarEventsMigrateToUnifiedBlocks()
+{
+    QSqlQuery downgrade(m_db);
+    QVERIFY(downgrade.exec(QStringLiteral("PRAGMA user_version = 4")));
+    QVERIFY(downgrade.exec(QStringLiteral(
+        "INSERT INTO categories(id, name, color) VALUES(99, 'Course', '#123456')")));
+    QVERIFY(downgrade.exec(QStringLiteral(
+        "INSERT INTO calendar_events(title, start_time, end_time, type, category_id, is_locked, "
+        "created_at, updated_at, color_override) VALUES("
+        "'Calculus', '2026-06-21T09:00:00', '2026-06-21T10:30:00', 0, 99, 1, "
+        "'2026-06-20T08:00:00', '2026-06-20T08:00:00', '#ABCDEF')")));
+
+    QVERIFY2(Migrations::run(m_db), qPrintable(Migrations::lastError()));
+    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM calendar_events")), 0);
+    QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM tasks WHERE title = 'Calculus'")), 1);
+    QCOMPARE(scalar(QStringLiteral(
+                 "SELECT COUNT(*) FROM time_blocks b JOIN tasks t ON t.id = b.task_id "
+                 "WHERE t.title = 'Calculus' AND b.source = 2")),
+             1);
 }
 
 void DatabaseConsistencyTests::legacyDatabaseMigratesWithoutDataLoss()
@@ -147,6 +185,40 @@ void DatabaseConsistencyTests::taskCategoryAndColorPersist()
     QCOMPARE(reloaded[0].title, QStringLiteral("Renamed task"));
     QCOMPARE(reloaded[0].categoryName, QStringLiteral("Renamed category"));
     QCOMPARE(reloaded[0].categoryColor, QStringLiteral("#ABCDEF"));
+}
+
+void DatabaseConsistencyTests::taskColorOverrideDoesNotMutateCategory()
+{
+    TaskRepository tasks(m_db);
+    QVERIFY2(tasks.createTask(createTask(QStringLiteral("First task")), QStringLiteral("Shared")),
+             qPrintable(tasks.lastError()));
+    QVERIFY2(tasks.createTask(createTask(QStringLiteral("Second task")), QStringLiteral("Shared")),
+             qPrintable(tasks.lastError()));
+    QVERIFY2(tasks.updateCategoryColor(QStringLiteral("Shared"), QStringLiteral("#123456")),
+             qPrintable(tasks.lastError()));
+
+    QVector<Task> stored = tasks.allTasks();
+    QCOMPARE(stored.size(), 2);
+    auto firstIt = std::find_if(stored.begin(), stored.end(), [](const Task& task) {
+        return task.title == QStringLiteral("First task");
+    });
+    QVERIFY(firstIt != stored.end());
+    firstIt->colorOverride = QStringLiteral("#ABCDEF");
+    firstIt->categoryColor = firstIt->colorOverride;
+    QVERIFY2(tasks.updateTask(*firstIt, QStringLiteral("Shared")), qPrintable(tasks.lastError()));
+
+    const QVector<Task> reloaded = tasks.allTasks();
+    QCOMPARE(reloaded.size(), 2);
+    auto reloadedFirst = std::find_if(reloaded.begin(), reloaded.end(), [](const Task& task) {
+        return task.title == QStringLiteral("First task");
+    });
+    auto reloadedSecond = std::find_if(reloaded.begin(), reloaded.end(), [](const Task& task) {
+        return task.title == QStringLiteral("Second task");
+    });
+    QVERIFY(reloadedFirst != reloaded.end());
+    QVERIFY(reloadedSecond != reloaded.end());
+    QCOMPARE(reloadedFirst->categoryColor, QStringLiteral("#ABCDEF"));
+    QCOMPARE(reloadedSecond->categoryColor, QStringLiteral("#123456"));
 }
 
 void DatabaseConsistencyTests::batchBlockFailureRollsBack()
@@ -283,6 +355,247 @@ void DatabaseConsistencyTests::backupRoundTripPreservesCoreData()
     QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM tasks")), 1);
     QCOMPARE(scalar(QStringLiteral("SELECT COUNT(*) FROM time_blocks")), 1);
     QCOMPARE(tasks.allTasks().first().title, QStringLiteral("Backup task"));
+}
+
+void DatabaseConsistencyTests::cascadeResizePushesOverlappingBlocks()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock first;
+    first.id = 1;
+    first.start = QDateTime(date, QTime(10, 0));
+    first.end = QDateTime(date, QTime(11, 0));
+    TimeBlock second;
+    second.id = 2;
+    second.start = QDateTime(date, QTime(10, 45));
+    second.end = QDateTime(date, QTime(12, 15));
+
+    const CascadePlanResult result = planCascadeDown(
+        QDateTime(date, QTime(9, 0)), QDateTime(date, QTime(10, 30)),
+        QDateTime(date.addDays(1), QTime(0, 0)), {first, second}, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 2);
+    QCOMPARE(result.movedBlocks.at(0).start.time(), QTime(10, 30));
+    QCOMPARE(result.movedBlocks.at(0).end.time(), QTime(11, 30));
+    QCOMPARE(result.movedBlocks.at(1).start.time(), QTime(11, 30));
+    QCOMPARE(result.movedBlocks.at(1).end.time(), QTime(13, 0));
+}
+
+void DatabaseConsistencyTests::cascadeResizePreservesBlockDurations()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(10, 0));
+    block.end = QDateTime(date, QTime(12, 45));
+
+    const CascadePlanResult result = planCascadeDown(
+        QDateTime(date, QTime(9, 0)), QDateTime(date, QTime(11, 0)),
+        QDateTime(date.addDays(1), QTime(0, 0)), {block}, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 1);
+    QCOMPARE(result.movedBlocks.first().start.secsTo(result.movedBlocks.first().end),
+             block.start.secsTo(block.end));
+}
+
+void DatabaseConsistencyTests::cascadeResizeSkipsFixedIntervals()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(10, 0));
+    block.end = QDateTime(date, QTime(11, 0));
+    const TimeInterval fixed {
+        QDateTime(date, QTime(10, 30)),
+        QDateTime(date, QTime(12, 0))
+    };
+
+    const CascadePlanResult result = planCascadeDown(
+        QDateTime(date, QTime(9, 0)), QDateTime(date, QTime(10, 30)),
+        QDateTime(date.addDays(1), QTime(0, 0)), {block}, {fixed});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 1);
+    QCOMPARE(result.movedBlocks.first().start.time(), QTime(12, 0));
+    QCOMPARE(result.movedBlocks.first().end.time(), QTime(13, 0));
+}
+
+void DatabaseConsistencyTests::cascadeResizeRejectsDayOverflow()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(22, 30));
+    block.end = QDateTime(date, QTime(23, 45));
+
+    const CascadePlanResult result = planCascadeDown(
+        QDateTime(date, QTime(21, 0)), QDateTime(date, QTime(23, 30)),
+        QDateTime(date.addDays(1), QTime(0, 0)), {block}, {});
+
+    QVERIFY(!result.ok);
+    QCOMPARE(result.error, QStringLiteral("day-overflow"));
+    QVERIFY(result.movedBlocks.isEmpty());
+}
+
+void DatabaseConsistencyTests::cascadeResizeUpPushesOverlappingBlocks()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock nearest;
+    nearest.id = 1;
+    nearest.start = QDateTime(date, QTime(8, 30));
+    nearest.end = QDateTime(date, QTime(10, 30));
+    TimeBlock earlier;
+    earlier.id = 2;
+    earlier.start = QDateTime(date, QTime(7, 0));
+    earlier.end = QDateTime(date, QTime(9, 0));
+
+    const CascadePlanResult result = planCascadeUp(
+        QDateTime(date, QTime(9, 30)), QDateTime(date, QTime(13, 0)),
+        QDateTime(date, QTime(0, 0)), {earlier, nearest}, {});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 2);
+    QCOMPARE(result.movedBlocks.at(0).start.time(), QTime(7, 30));
+    QCOMPARE(result.movedBlocks.at(0).end.time(), QTime(9, 30));
+    QCOMPARE(result.movedBlocks.at(1).start.time(), QTime(5, 30));
+    QCOMPARE(result.movedBlocks.at(1).end.time(), QTime(7, 30));
+}
+
+void DatabaseConsistencyTests::cascadeResizeUpSkipsFixedIntervals()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(8, 30));
+    block.end = QDateTime(date, QTime(10, 30));
+    const TimeInterval fixed {
+        QDateTime(date, QTime(6, 30)),
+        QDateTime(date, QTime(8, 30))
+    };
+
+    const CascadePlanResult result = planCascadeUp(
+        QDateTime(date, QTime(9, 30)), QDateTime(date, QTime(13, 0)),
+        QDateTime(date, QTime(0, 0)), {block}, {fixed});
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 1);
+    QCOMPARE(result.movedBlocks.first().start.time(), QTime(4, 30));
+    QCOMPARE(result.movedBlocks.first().end.time(), QTime(6, 30));
+}
+
+void DatabaseConsistencyTests::cascadeResizeUpRejectsDayUnderflow()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(0, 30));
+    block.end = QDateTime(date, QTime(2, 30));
+
+    const CascadePlanResult result = planCascadeUp(
+        QDateTime(date, QTime(1, 0)), QDateTime(date, QTime(5, 0)),
+        QDateTime(date, QTime(0, 0)), {block}, {});
+
+    QVERIFY(!result.ok);
+    QCOMPARE(result.error, QStringLiteral("day-underflow"));
+    QVERIFY(result.movedBlocks.isEmpty());
+}
+
+void DatabaseConsistencyTests::horizontalRelocationPrefersUpForLeftExtension()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(10, 30));
+    block.end = QDateTime(date, QTime(11, 30));
+
+    const CascadePlanResult result = planHorizontalRelocation(
+        QDateTime(date, QTime(10, 0)), QDateTime(date, QTime(12, 0)),
+        QDateTime(date, QTime(0, 0)), QDateTime(date.addDays(1), QTime(0, 0)),
+        {block}, {}, true);
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 1);
+    QCOMPARE(result.movedBlocks.first().start.time(), QTime(9, 0));
+    QCOMPARE(result.movedBlocks.first().end.time(), QTime(10, 0));
+}
+
+void DatabaseConsistencyTests::horizontalRelocationPrefersDownForRightExtension()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(10, 30));
+    block.end = QDateTime(date, QTime(11, 30));
+
+    const CascadePlanResult result = planHorizontalRelocation(
+        QDateTime(date, QTime(10, 0)), QDateTime(date, QTime(12, 0)),
+        QDateTime(date, QTime(0, 0)), QDateTime(date.addDays(1), QTime(0, 0)),
+        {block}, {}, false);
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 1);
+    QCOMPARE(result.movedBlocks.first().start.time(), QTime(12, 0));
+    QCOMPARE(result.movedBlocks.first().end.time(), QTime(13, 0));
+}
+
+void DatabaseConsistencyTests::horizontalRelocationAvoidsFixedAndOtherBlocks()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock first;
+    first.id = 1;
+    first.start = QDateTime(date, QTime(10, 0));
+    first.end = QDateTime(date, QTime(11, 0));
+    TimeBlock second;
+    second.id = 2;
+    second.start = QDateTime(date, QTime(11, 0));
+    second.end = QDateTime(date, QTime(12, 30));
+    TimeBlock existing;
+    existing.id = 3;
+    existing.start = QDateTime(date, QTime(12, 30));
+    existing.end = QDateTime(date, QTime(14, 0));
+    const TimeInterval fixed {
+        QDateTime(date, QTime(8, 0)),
+        QDateTime(date, QTime(9, 0))
+    };
+
+    const CascadePlanResult result = planHorizontalRelocation(
+        QDateTime(date, QTime(9, 30)), QDateTime(date, QTime(12, 30)),
+        QDateTime(date, QTime(0, 0)), QDateTime(date.addDays(1), QTime(0, 0)),
+        {first, second, existing}, {fixed}, true);
+
+    QVERIFY(result.ok);
+    QCOMPARE(result.movedBlocks.size(), 2);
+    for (const TimeBlock& moved : result.movedBlocks) {
+        QCOMPARE(moved.start.secsTo(moved.end),
+                 moved.id == first.id ? first.start.secsTo(first.end) : second.start.secsTo(second.end));
+        QVERIFY(!(moved.start < existing.end && existing.start < moved.end));
+        QVERIFY(!(moved.start < fixed.end && fixed.start < moved.end));
+    }
+    QVERIFY(!(result.movedBlocks.at(0).start < result.movedBlocks.at(1).end
+              && result.movedBlocks.at(1).start < result.movedBlocks.at(0).end));
+}
+
+void DatabaseConsistencyTests::horizontalRelocationRejectsFullDay()
+{
+    const QDate date(2026, 6, 21);
+    TimeBlock block;
+    block.id = 1;
+    block.start = QDateTime(date, QTime(10, 0));
+    block.end = QDateTime(date, QTime(12, 0));
+    const QVector<TimeInterval> fixed {
+        {QDateTime(date, QTime(0, 0)), QDateTime(date, QTime(1, 0))},
+        {QDateTime(date, QTime(23, 0)), QDateTime(date.addDays(1), QTime(0, 0))}
+    };
+
+    const CascadePlanResult result = planHorizontalRelocation(
+        QDateTime(date, QTime(1, 0)), QDateTime(date, QTime(23, 0)),
+        QDateTime(date, QTime(0, 0)), QDateTime(date.addDays(1), QTime(0, 0)),
+        {block}, fixed, false);
+
+    QVERIFY(!result.ok);
+    QCOMPARE(result.error, QStringLiteral("no-horizontal-space"));
+    QVERIFY(result.movedBlocks.isEmpty());
 }
 
 QTEST_MAIN(DatabaseConsistencyTests)

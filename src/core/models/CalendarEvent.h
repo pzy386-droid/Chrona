@@ -13,5 +13,6 @@ struct CalendarEvent {
     std::optional<int> categoryId;
     QString categoryName;
     QString categoryColor;
+    QString colorOverride;
     bool locked = true;
 };

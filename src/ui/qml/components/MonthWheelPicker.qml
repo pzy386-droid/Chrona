@@ -4,69 +4,83 @@ import QtQuick.Layouts
 
 Popup {
     id: root
-    property string title: qsTr("选择时间")
-    property string timeText: "09:00"
+    property int year: new Date().getFullYear()
+    property int month: new Date().getMonth() + 1
+    property int baseYear: new Date().getFullYear() - 60
+    property int yearCount: 71
     property bool suppressApply: false
-    signal accepted(string timeText)
+    signal accepted(int year, int month)
 
-    width: 232
-    height: 232
+    width: 292
+    height: 286
     modal: true
     focus: true
     padding: 0
     closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
 
-    function openWith(time) {
-        var parts = String(time || "09:00").split(":")
-        var h = Number(parts[0])
-        var m = Number(parts[1])
-        if (isNaN(h)) h = 9
-        if (isNaN(m)) m = 0
+    function openWith(y, m) {
+        var safeYear = Math.max(baseYear, Math.min(baseYear + yearCount - 1, Number(y) || new Date().getFullYear()))
+        var safeMonth = Math.max(1, Math.min(12, Number(m) || 1))
         root.suppressApply = true
-        hourWheel.setIndex(Math.max(0, Math.min(23, h)), false)
-        minuteWheel.setIndex(Math.max(0, Math.min(minuteWheel.count - 1, Math.round(m / minuteWheel.step))), false)
+        yearWheel.setIndex(safeYear - baseYear, false)
+        monthWheel.setIndex(safeMonth - 1, false)
+        root.year = safeYear
+        root.month = safeMonth
         root.suppressApply = false
-        root.timeText = currentTimeText()
         root.open()
     }
 
-    function currentTimeText() {
-        return String(hourWheel.selectedValue()).padStart(2, "0") + ":" + String(minuteWheel.selectedValue()).padStart(2, "0")
-    }
-
     function applyCurrent() {
-        var value = currentTimeText()
-        if (!root.suppressApply && root.timeText !== value) {
-            root.timeText = value
-            root.accepted(value)
+        if (root.suppressApply) {
+            return
+        }
+        var nextYear = yearWheel.selectedValue()
+        var nextMonth = monthWheel.selectedValue()
+        if (root.year !== nextYear || root.month !== nextMonth) {
+            root.year = nextYear
+            root.month = nextMonth
         }
     }
 
+    function acceptCurrent() {
+        applyCurrent()
+        root.accepted(root.year, root.month)
+        root.close()
+    }
+
     background: Rectangle {
-        radius: 18
+        radius: 22
         color: Theme.surfaceMuted
         border.width: 1
         border.color: Theme.border
+
+        Rectangle {
+            anchors.fill: parent
+            anchors.margins: 1
+            radius: 21
+            color: "transparent"
+            border.width: 1
+            border.color: Theme.borderSoft
+            opacity: 0.9
+        }
     }
 
     ColumnLayout {
         anchors.fill: parent
-        anchors.margins: 14
-        spacing: 9
+        anchors.margins: 16
+        spacing: 12
 
         RowLayout {
             Layout.fillWidth: true
-
             Text {
                 Layout.fillWidth: true
-                text: root.title
+                text: qsTr("选择月份")
                 color: Theme.primaryText
-                font.pixelSize: 15
+                font.pixelSize: 16
                 font.weight: Font.DemiBold
             }
-
             Text {
-                text: root.currentTimeText()
+                text: root.year + qsTr("年 ") + root.month + qsTr("月")
                 color: Theme.accentBright
                 font.pixelSize: 13
                 font.weight: Font.DemiBold
@@ -75,9 +89,9 @@ Popup {
 
         Rectangle {
             Layout.fillWidth: true
-            Layout.preferredHeight: 128
-            radius: 14
-            color: Theme.surface
+            Layout.preferredHeight: 162
+            radius: 16
+            color: Theme.canvasBackground
             border.width: 1
             border.color: Theme.border
             clip: true
@@ -88,72 +102,107 @@ Popup {
                 anchors.verticalCenter: parent.verticalCenter
                 anchors.leftMargin: 16
                 anchors.rightMargin: 16
-                height: 32
-                radius: 10
+                height: 36
+                radius: 12
                 color: Theme.surfaceSelected
                 border.width: 1
                 border.color: Theme.accentBright
-                opacity: 0.82
+                opacity: 0.84
             }
 
             Row {
                 anchors.centerIn: parent
-                width: 116
+                width: 176
                 height: parent.height
-                spacing: 0
+                spacing: 10
 
                 WheelList {
-                    id: hourWheel
-                    width: 48
+                    id: yearWheel
+                    width: 92
                     height: parent.height
-                    count: 24
-                    step: 1
+                    count: root.yearCount
+                    baseValue: root.baseYear
+                    suffix: qsTr("年")
                     onSettled: root.applyCurrent()
                 }
 
-                Text {
-                    width: 20
-                    height: parent.height
-                    text: ":"
-                    color: Theme.secondaryText
-                    font.pixelSize: 17
-                    font.weight: Font.DemiBold
-                    horizontalAlignment: Text.AlignHCenter
-                    verticalAlignment: Text.AlignVCenter
-                }
-
                 WheelList {
-                    id: minuteWheel
-                    width: 48
+                    id: monthWheel
+                    width: 74
                     height: parent.height
                     count: 12
-                    step: 5
+                    baseValue: 1
+                    suffix: qsTr("月")
                     onSettled: root.applyCurrent()
                 }
             }
         }
 
-        Text {
+        RowLayout {
             Layout.fillWidth: true
-            text: qsTr("滚轮或拖动选择，点击外部返回")
-            color: Theme.tertiaryText
-            font.pixelSize: 11
-            horizontalAlignment: Text.AlignRight
+            spacing: 10
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 42
+                radius: 12
+                color: cancelMouse.containsMouse ? Theme.surfaceHover : Theme.canvasBackground
+                border.width: 1
+                border.color: Theme.border
+
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("取消")
+                    color: Theme.primaryText
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    id: cancelMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.close()
+                }
+            }
+
+            Rectangle {
+                Layout.fillWidth: true
+                Layout.preferredHeight: 42
+                radius: 12
+                color: acceptMouse.containsMouse ? "#8B99FF" : Theme.accentBright
+
+                Text {
+                    anchors.centerIn: parent
+                    text: qsTr("完成")
+                    color: "white"
+                    font.pixelSize: 13
+                    font.weight: Font.DemiBold
+                }
+
+                MouseArea {
+                    id: acceptMouse
+                    anchors.fill: parent
+                    hoverEnabled: true
+                    cursorShape: Qt.PointingHandCursor
+                    onClicked: root.acceptCurrent()
+                }
+            }
         }
     }
 
     component WheelList: Item {
         id: wheel
-        property int count: 24
-        property int step: 1
-        property int baseValue: 0
+        property int count: 12
+        property int baseValue: 1
         property string suffix: ""
         property int selectedIndex: 0
         property real animatedOffset: 0
         property real wheelDelta: 0
         property real dragStartY: 0
         property int dragStartIndex: 0
-        readonly property int itemSize: 32
+        readonly property int itemSize: 36
         signal settled()
 
         clip: true
@@ -180,7 +229,7 @@ Popup {
         }
 
         function selectedValue() {
-            return baseValue + selectedIndex * step
+            return baseValue + selectedIndex
         }
 
         function stepBy(delta) {
@@ -198,11 +247,11 @@ Popup {
                 x: 0
                 y: wheel.height / 2 - wheel.itemSize / 2 + offset * wheel.itemSize + wheel.animatedOffset
                 text: valueIndex >= 0 && valueIndex < wheel.count
-                    ? String(wheel.baseValue + valueIndex * wheel.step).padStart(2, "0") + wheel.suffix
+                    ? String(wheel.baseValue + valueIndex) + wheel.suffix
                     : ""
                 color: offset === 0 ? Theme.primaryText : Theme.mutedText
-                opacity: Math.abs(offset) === 0 ? 1 : Math.abs(offset) === 1 ? 0.58 : 0.26
-                font.pixelSize: offset === 0 ? 22 : 14
+                opacity: Math.abs(offset) === 0 ? 1 : Math.abs(offset) === 1 ? 0.56 : 0.26
+                font.pixelSize: offset === 0 ? 20 : 13
                 font.weight: offset === 0 ? Font.DemiBold : Font.Normal
                 horizontalAlignment: Text.AlignHCenter
                 verticalAlignment: Text.AlignVCenter
@@ -246,7 +295,7 @@ Popup {
                 if (!pressed) {
                     return
                 }
-                var delta = Math.round((wheel.dragStartY - mouse.y) / (wheel.itemSize * 1.25))
+                var delta = Math.round((wheel.dragStartY - mouse.y) / (wheel.itemSize * 1.35))
                 wheel.setIndex(wheel.dragStartIndex + delta, true)
             }
         }

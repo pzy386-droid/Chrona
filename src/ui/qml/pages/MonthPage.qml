@@ -5,10 +5,12 @@ import Chrona
 
 Rectangle {
     id: root
-    color: "#0F1117"
+    color: Theme.appBackground
+
     property int shownYear: new Date().getFullYear()
     property int shownMonth: new Date().getMonth() + 1
     property var days: []
+
     signal dayRequested(string dateText)
 
     function reloadMonth() {
@@ -19,8 +21,6 @@ Rectangle {
         var now = new Date()
         shownYear = now.getFullYear()
         shownMonth = now.getMonth() + 1
-        yearPicker.currentIndex = 60
-        monthPicker.currentIndex = shownMonth - 1
         reloadMonth()
     }
 
@@ -28,7 +28,9 @@ Rectangle {
 
     Connections {
         target: ScheduleService
-        function onDataChanged() { root.reloadMonth() }
+        function onDataChanged() {
+            root.reloadMonth()
+        }
     }
 
     ColumnLayout {
@@ -37,58 +39,112 @@ Rectangle {
         spacing: 14
 
         Rectangle {
+            id: header
             Layout.fillWidth: true
             Layout.preferredHeight: 72
-            radius: 14
-            color: "#161B22"
+            radius: 16
+            color: Theme.surfaceElevated
             border.width: 1
-            border.color: "#2A3140"
+            border.color: Theme.border
 
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 14
-                spacing: 10
+                spacing: 12
 
                 ColumnLayout {
                     Layout.fillWidth: true
                     spacing: 3
-                    Text { text: qsTr("月历总览"); color: "#FFFFFF"; font.pixelSize: 20; font.weight: Font.DemiBold }
-                    Text { text: qsTr("回顾学习记录，快速定位任意一天"); color: "#8F9AB0"; font.pixelSize: 12 }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("月历总览")
+                        color: Theme.strongText
+                        font.pixelSize: 20
+                        font.weight: Font.DemiBold
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("回顾学习记录，快速定位任意一天")
+                        color: Theme.tertiaryText
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
                 }
 
-                ComboBox {
-                    id: yearPicker
-                    Layout.preferredWidth: 112
-                    model: Array.from({length: 71}, function(_, i) { return new Date().getFullYear() - 60 + i })
-                    currentIndex: 60
-                    onActivated: {
-                        root.shownYear = Number(currentText)
-                        root.reloadMonth()
-                    }
-                    contentItem: Text { text: yearPicker.displayText + qsTr("年"); color: "#E6EAF2"; verticalAlignment: Text.AlignVCenter; leftPadding: 12 }
-                    background: Rectangle { radius: 9; color: "#11151D"; border.width: 1; border.color: "#30384C" }
-                }
+                Rectangle {
+                    Layout.preferredWidth: 178
+                    Layout.preferredHeight: 38
+                    radius: 11
+                    color: monthSelectMouse.containsMouse ? Theme.surfaceHover : Theme.canvasBackground
+                    border.width: 1
+                    border.color: monthPickerPopup.opened ? Theme.accentBright : Theme.border
 
-                ComboBox {
-                    id: monthPicker
-                    Layout.preferredWidth: 92
-                    model: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-                    currentIndex: root.shownMonth - 1
-                    onActivated: {
-                        root.shownMonth = Number(currentText)
-                        root.reloadMonth()
+                    Behavior on color { ColorAnimation { duration: 140 } }
+                    Behavior on border.color { ColorAnimation { duration: 140 } }
+
+                    RowLayout {
+                        anchors.fill: parent
+                        anchors.leftMargin: 13
+                        anchors.rightMargin: 11
+                        spacing: 8
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.shownYear + qsTr("年 ") + root.shownMonth + qsTr("月")
+                            color: Theme.primaryText
+                            font.pixelSize: 13
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                            verticalAlignment: Text.AlignVCenter
+                        }
+
+                        Text {
+                            text: "⌄"
+                            color: Theme.accentBright
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                            rotation: monthPickerPopup.opened ? 180 : 0
+                            Behavior on rotation {
+                                NumberAnimation { duration: 160; easing.type: Easing.OutCubic }
+                            }
+                        }
                     }
-                    contentItem: Text { text: monthPicker.displayText + qsTr("月"); color: "#E6EAF2"; verticalAlignment: Text.AlignVCenter; leftPadding: 12 }
-                    background: Rectangle { radius: 9; color: "#11151D"; border.width: 1; border.color: "#30384C" }
+
+                    MouseArea {
+                        id: monthSelectMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: monthPickerPopup.openWith(root.shownYear, root.shownMonth)
+                    }
                 }
 
                 Rectangle {
                     Layout.preferredWidth: 82
                     Layout.preferredHeight: 38
-                    radius: 9
-                    color: todayMouse.containsMouse ? "#8B99FF" : "#6C63FF"
-                    Text { anchors.centerIn: parent; text: qsTr("今天"); color: "white"; font.pixelSize: 13; font.weight: Font.DemiBold }
-                    MouseArea { id: todayMouse; anchors.fill: parent; hoverEnabled: true; cursorShape: Qt.PointingHandCursor; onClicked: root.selectToday() }
+                    radius: 11
+                    color: todayMouse.containsMouse ? "#8B99FF" : Theme.accent
+
+                    Behavior on color { ColorAnimation { duration: 140 } }
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("今天")
+                        color: "white"
+                        font.pixelSize: 13
+                        font.weight: Font.DemiBold
+                    }
+
+                    MouseArea {
+                        id: todayMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        cursorShape: Qt.PointingHandCursor
+                        onClicked: root.selectToday()
+                    }
                 }
             }
         }
@@ -98,13 +154,22 @@ Rectangle {
             columns: 7
             columnSpacing: 1
             rowSpacing: 1
+
             Repeater {
                 model: [qsTr("周一"), qsTr("周二"), qsTr("周三"), qsTr("周四"), qsTr("周五"), qsTr("周六"), qsTr("周日")]
+
                 delegate: Rectangle {
                     Layout.fillWidth: true
                     Layout.preferredHeight: 34
-                    color: "#11151D"
-                    Text { anchors.centerIn: parent; text: modelData; color: index >= 5 ? "#A78BFA" : "#7F8A9E"; font.pixelSize: 12; font.weight: Font.DemiBold }
+                    color: Theme.canvasBackground
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: modelData
+                        color: index >= 5 ? "#A78BFA" : Theme.tertiaryText
+                        font.pixelSize: 12
+                        font.weight: Font.DemiBold
+                    }
                 }
             }
         }
@@ -119,18 +184,23 @@ Rectangle {
 
             Repeater {
                 model: root.days
+
                 delegate: Rectangle {
                     id: cell
                     required property var modelData
                     readonly property var dayData: modelData
+
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     Layout.minimumHeight: 92
                     radius: 10
-                    color: cellMouse.containsMouse ? "#1B2130" : (modelData.isSelected ? "#1A2033" : "#131821")
-                    border.width: modelData.isToday || modelData.isSelected ? 1 : 0
-                    border.color: modelData.isToday ? "#7C8CFF" : "#4B5674"
-                    opacity: modelData.inMonth ? 1 : 0.48
+                    color: cellMouse.containsMouse ? Theme.surfaceHover : (dayData.isSelected ? Theme.surfaceSelected : Theme.surfaceElevated)
+                    border.width: dayData.isToday || dayData.isSelected ? 1 : 0
+                    border.color: dayData.isToday ? Theme.accentBright : Theme.border
+                    opacity: dayData.inMonth ? 1 : 0.48
+
+                    Behavior on color { ColorAnimation { duration: 120 } }
+                    Behavior on opacity { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
 
                     ColumnLayout {
                         anchors.fill: parent
@@ -139,36 +209,41 @@ Rectangle {
 
                         RowLayout {
                             Layout.fillWidth: true
+
                             Text {
                                 text: cell.dayData.day
-                                color: cell.dayData.isToday ? "#FFFFFF" : "#C8D0DE"
+                                color: cell.dayData.isToday ? Theme.accentText : Theme.primaryText
                                 font.pixelSize: 14
                                 font.weight: cell.dayData.isToday ? Font.Bold : Font.DemiBold
                             }
+
                             Item { Layout.fillWidth: true }
+
                             Text {
                                 visible: cell.dayData.plannedMinutes > 0
                                 text: cell.dayData.completedMinutes + "/" + cell.dayData.plannedMinutes + qsTr(" 分")
-                                color: cell.dayData.completionRate >= 80 ? "#6FD6A7" : "#8F9AB0"
+                                color: cell.dayData.completionRate >= 80 ? "#6FD6A7" : Theme.tertiaryText
                                 font.pixelSize: 10
                             }
                         }
 
                         Repeater {
                             model: Math.min(3, cell.dayData.entries.length)
+
                             delegate: Rectangle {
                                 Layout.fillWidth: true
                                 Layout.preferredHeight: 18
                                 radius: 4
                                 color: cell.dayData.entries[index].color
                                 opacity: cell.dayData.entries[index].completed ? 0.48 : 0.82
+
                                 Text {
                                     anchors.fill: parent
                                     anchors.leftMargin: 6
                                     anchors.rightMargin: 4
                                     verticalAlignment: Text.AlignVCenter
                                     text: cell.dayData.entries[index].title
-                                    color: "#F7F8FC"
+                                    color: Theme.primaryText
                                     font.pixelSize: 10
                                     elide: Text.ElideRight
                                 }
@@ -178,9 +253,10 @@ Rectangle {
                         Text {
                             visible: cell.dayData.moreCount > 0
                             text: qsTr("还有 %1 项").arg(cell.dayData.moreCount)
-                            color: "#7C8CFF"
+                            color: Theme.accentBright
                             font.pixelSize: 10
                         }
+
                         Item { Layout.fillHeight: true }
                     }
 
@@ -193,6 +269,18 @@ Rectangle {
                     }
                 }
             }
+        }
+    }
+
+    MonthWheelPicker {
+        id: monthPickerPopup
+        x: Math.max(12, root.width / 2 - width / 2)
+        y: 84
+
+        onAccepted: function(year, month) {
+            root.shownYear = year
+            root.shownMonth = month
+            root.reloadMonth()
         }
     }
 }

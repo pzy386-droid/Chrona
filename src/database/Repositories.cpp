@@ -72,7 +72,8 @@ QVector<Task> TaskRepository::allTasks() const
     QSqlQuery query(m_db);
     query.exec(QStringLiteral(R"SQL(
         SELECT t.id, t.title, t.notes, t.deadline, t.estimated_minutes, t.remaining_minutes,
-               t.priority, t.status, t.category_id, c.name, c.color, t.estimated_hours, t.preferred_study_time,
+               t.priority, t.status, t.category_id, c.name, COALESCE(NULLIF(t.color_override, ''), c.color), t.color_override,
+               t.estimated_hours, t.preferred_study_time,
                t.start_date, t.deadline_type, t.auto_schedule_enabled, t.min_chunk_minutes,
                t.ideal_chunk_minutes, t.effort_level, t.schedule_status, t.completed_at
         FROM tasks t
@@ -94,19 +95,20 @@ QVector<Task> TaskRepository::allTasks() const
         }
         task.categoryName = query.value(9).toString();
         task.categoryColor = query.value(10).toString();
-        task.estimatedHours = query.value(11).toDouble();
-        task.preferredStudyTime = query.value(12).toString();
-        task.startDate = fromIso(query.value(13));
+        task.colorOverride = query.value(11).toString();
+        task.estimatedHours = query.value(12).toDouble();
+        task.preferredStudyTime = query.value(13).toString();
+        task.startDate = fromIso(query.value(14));
         if (!task.startDate.isValid()) {
             task.startDate = QDateTime(QDate::currentDate(), QTime(0, 0));
         }
-        task.deadlineType = static_cast<DeadlineType>(query.value(14).toInt());
-        task.autoScheduleEnabled = query.value(15).toBool();
-        task.minChunkMinutes = query.value(16).toInt();
-        task.idealChunkMinutes = query.value(17).toInt();
-        task.effortLevel = query.value(18).toInt();
-        task.scheduleStatus = static_cast<ScheduleStatus>(query.value(19).toInt());
-        task.completedAt = fromIso(query.value(20));
+        task.deadlineType = static_cast<DeadlineType>(query.value(15).toInt());
+        task.autoScheduleEnabled = query.value(16).toBool();
+        task.minChunkMinutes = query.value(17).toInt();
+        task.idealChunkMinutes = query.value(18).toInt();
+        task.effortLevel = query.value(19).toInt();
+        task.scheduleStatus = static_cast<ScheduleStatus>(query.value(20).toInt());
+        task.completedAt = fromIso(query.value(21));
         tasks.push_back(task);
     }
     return tasks;
@@ -134,8 +136,8 @@ int TaskRepository::createTaskReturningId(const Task& task, const QString& categ
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
         INSERT INTO tasks(title, notes, start_date, deadline, deadline_type, estimated_minutes, estimated_hours, remaining_minutes, preferred_study_time,
-                          auto_schedule_enabled, min_chunk_minutes, ideal_chunk_minutes, effort_level, schedule_status, priority, status, category_id, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                          auto_schedule_enabled, min_chunk_minutes, ideal_chunk_minutes, effort_level, schedule_status, priority, status, category_id, color_override, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     )SQL"));
     query.addBindValue(task.title);
     query.addBindValue(task.notes);
@@ -144,7 +146,7 @@ int TaskRepository::createTaskReturningId(const Task& task, const QString& categ
     query.addBindValue(static_cast<int>(task.deadlineType));
     query.addBindValue(task.estimatedMinutes);
     query.addBindValue(task.estimatedMinutes / 60.0);
-    query.addBindValue(task.estimatedMinutes);
+    query.addBindValue(qBound(0, task.remainingMinutes, task.estimatedMinutes));
     query.addBindValue(task.preferredStudyTime);
     query.addBindValue(task.autoScheduleEnabled ? 1 : 0);
     query.addBindValue(qMax(15, task.minChunkMinutes));
@@ -154,6 +156,7 @@ int TaskRepository::createTaskReturningId(const Task& task, const QString& categ
     query.addBindValue(static_cast<int>(task.priority));
     query.addBindValue(static_cast<int>(TaskStatus::Inbox));
     query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(task.colorOverride.trimmed().isEmpty() ? QVariant() : QVariant(task.colorOverride.trimmed()));
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     if (!query.exec()) {
@@ -192,7 +195,7 @@ bool TaskRepository::updateTask(const Task& task, const QString& categoryName) c
         UPDATE tasks
         SET title = ?, notes = ?, start_date = ?, deadline = ?, deadline_type = ?, estimated_minutes = ?, estimated_hours = ?,
             remaining_minutes = ?, preferred_study_time = ?, auto_schedule_enabled = ?, min_chunk_minutes = ?,
-            ideal_chunk_minutes = ?, effort_level = ?, priority = ?, category_id = ?, updated_at = ?
+            ideal_chunk_minutes = ?, effort_level = ?, priority = ?, category_id = ?, color_override = ?, updated_at = ?
         WHERE id = ?
     )SQL"));
     query.addBindValue(task.title.trimmed());
@@ -210,6 +213,7 @@ bool TaskRepository::updateTask(const Task& task, const QString& categoryName) c
     query.addBindValue(qBound(0, task.effortLevel, 2));
     query.addBindValue(static_cast<int>(task.priority));
     query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(task.colorOverride.trimmed().isEmpty() ? QVariant() : QVariant(task.colorOverride.trimmed()));
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     query.addBindValue(task.id);
     if (!query.exec() || query.numRowsAffected() != 1) {
@@ -396,7 +400,8 @@ QVector<CalendarEvent> CalendarRepository::eventsBetween(const QDateTime& start,
     QVector<CalendarEvent> events;
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
-        SELECT e.id, e.title, e.start_time, e.end_time, e.type, e.category_id, c.name, c.color, e.is_locked
+        SELECT e.id, e.title, e.start_time, e.end_time, e.type, e.category_id, c.name,
+               COALESCE(NULLIF(e.color_override, ''), c.color), e.color_override, e.is_locked
         FROM calendar_events e
         LEFT JOIN categories c ON c.id = e.category_id
         WHERE e.end_time > ? AND e.start_time < ?
@@ -417,7 +422,8 @@ QVector<CalendarEvent> CalendarRepository::eventsBetween(const QDateTime& start,
         }
         event.categoryName = query.value(6).toString();
         event.categoryColor = query.value(7).toString();
-        event.locked = query.value(8).toBool();
+        event.colorOverride = query.value(8).toString();
+        event.locked = query.value(9).toBool();
         events.push_back(event);
     }
     return events;
@@ -443,14 +449,15 @@ bool CalendarRepository::createEvent(const CalendarEvent& event, const QString& 
     }
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
-        INSERT INTO calendar_events(title, start_time, end_time, type, category_id, is_locked, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO calendar_events(title, start_time, end_time, type, category_id, color_override, is_locked, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
     )SQL"));
     query.addBindValue(event.title.trimmed());
     query.addBindValue(toIso(event.start));
     query.addBindValue(toIso(event.end));
     query.addBindValue(static_cast<int>(event.type));
     query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(event.colorOverride.trimmed().isEmpty() ? QVariant() : QVariant(event.colorOverride.trimmed()));
     query.addBindValue(event.locked ? 1 : 0);
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     query.addBindValue(toIso(QDateTime::currentDateTime()));
@@ -485,13 +492,14 @@ bool CalendarRepository::updateEvent(const CalendarEvent& event, const QString& 
     QSqlQuery query(m_db);
     query.prepare(QStringLiteral(R"SQL(
         UPDATE calendar_events
-        SET title = ?, start_time = ?, end_time = ?, category_id = ?, is_locked = ?, updated_at = ?
+        SET title = ?, start_time = ?, end_time = ?, category_id = ?, color_override = ?, is_locked = ?, updated_at = ?
         WHERE id = ?
     )SQL"));
     query.addBindValue(event.title.trimmed());
     query.addBindValue(toIso(event.start));
     query.addBindValue(toIso(event.end));
     query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(event.colorOverride.trimmed().isEmpty() ? QVariant() : QVariant(event.colorOverride.trimmed()));
     query.addBindValue(event.locked ? 1 : 0);
     query.addBindValue(toIso(QDateTime::currentDateTime()));
     query.addBindValue(event.id);
@@ -623,14 +631,14 @@ bool CalendarRepository::upsertEvents(const QVector<CalendarEvent>& events, cons
             query.prepare(QStringLiteral(R"SQL(
                 UPDATE calendar_events
                 SET title = ?, start_time = ?, end_time = ?, type = ?, category_id = ?,
-                    is_locked = ?, updated_at = ?
+                    color_override = ?, is_locked = ?, updated_at = ?
                 WHERE id = ?
             )SQL"));
         } else {
             query.prepare(QStringLiteral(R"SQL(
                 INSERT INTO calendar_events(title, start_time, end_time, type, category_id,
-                                            is_locked, created_at, updated_at)
-                VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                                            color_override, is_locked, created_at, updated_at)
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
             )SQL"));
         }
         query.addBindValue(event.title.trimmed());
@@ -638,6 +646,7 @@ bool CalendarRepository::upsertEvents(const QVector<CalendarEvent>& events, cons
         query.addBindValue(toIso(event.end));
         query.addBindValue(static_cast<int>(event.type));
         query.addBindValue(categoryId);
+        query.addBindValue(event.colorOverride.trimmed().isEmpty() ? QVariant() : QVariant(event.colorOverride.trimmed()));
         query.addBindValue(event.locked ? 1 : 0);
         query.addBindValue(now);
         if (event.id > 0) {
@@ -1134,6 +1143,11 @@ QString TimeBlockRepository::lastError() const
 
 bool TimeBlockRepository::completeBlock(int blockId) const
 {
+    return setBlockCompleted(blockId, true);
+}
+
+bool TimeBlockRepository::setBlockCompleted(int blockId, bool completed) const
+{
     if (blockId <= 0) {
         return false;
     }
@@ -1155,7 +1169,7 @@ bool TimeBlockRepository::completeBlock(int blockId) const
     const QString now = toIso(QDateTime::currentDateTime());
     QSqlQuery updateBlock(db);
     updateBlock.prepare(QStringLiteral("UPDATE time_blocks SET completed_at = ?, updated_at = ? WHERE id = ?"));
-    updateBlock.addBindValue(now);
+    updateBlock.addBindValue(completed ? QVariant(now) : QVariant());
     updateBlock.addBindValue(now);
     updateBlock.addBindValue(blockId);
     if (!updateBlock.exec() || updateBlock.numRowsAffected() != 1) {

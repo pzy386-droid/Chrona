@@ -11,7 +11,7 @@
 #include <tuple>
 
 namespace {
-constexpr int kCurrentVersion = 3;
+constexpr int kCurrentVersion = 5;
 QString g_lastError;
 
 QString iso(const QDateTime& dateTime)
@@ -372,6 +372,107 @@ bool migrateToV3(QSqlDatabase db)
     }
     return true;
 }
+
+bool migrateToV4(QSqlDatabase db)
+{
+    return runInTransaction(db, [&] {
+        return addColumnIfMissing(db, QStringLiteral("tasks"), QStringLiteral("color_override"), QStringLiteral("TEXT"))
+            && addColumnIfMissing(db, QStringLiteral("calendar_events"), QStringLiteral("color_override"), QStringLiteral("TEXT"))
+            && setUserVersion(db, 4);
+    });
+}
+
+bool migrateToV5(QSqlDatabase db)
+{
+    return runInTransaction(db, [&] {
+        QSqlQuery events(db);
+        if (!events.exec(QStringLiteral(R"SQL(
+            SELECT id, title, start_time, end_time, category_id, is_locked,
+                   created_at, updated_at, color_override
+            FROM calendar_events
+            ORDER BY id
+        )SQL"))) {
+            g_lastError = events.lastError().text();
+            return false;
+        }
+
+        while (events.next()) {
+            const QString title = events.value(1).toString();
+            const QDateTime start = QDateTime::fromString(events.value(2).toString(), Qt::ISODate);
+            const QDateTime end = QDateTime::fromString(events.value(3).toString(), Qt::ISODate);
+            if (!start.isValid() || !end.isValid() || end <= start) {
+                g_lastError = QStringLiteral("Invalid calendar event during unified-block migration: %1").arg(title);
+                return false;
+            }
+
+            const int durationMinutes = qMax(15, static_cast<int>(start.secsTo(end) / 60));
+            const QString createdAt = events.value(6).toString().isEmpty() ? iso(QDateTime::currentDateTime()) : events.value(6).toString();
+            const QString updatedAt = events.value(7).toString().isEmpty() ? createdAt : events.value(7).toString();
+
+            QSqlQuery task(db);
+            task.prepare(QStringLiteral(R"SQL(
+                INSERT INTO tasks(
+                    title, notes, start_date, deadline, deadline_type,
+                    estimated_minutes, estimated_hours, remaining_minutes,
+                    preferred_study_time, auto_schedule_enabled,
+                    min_chunk_minutes, ideal_chunk_minutes, effort_level,
+                    schedule_status, priority, status, category_id,
+                    completed_at, created_at, updated_at, color_override
+                )
+                VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?)
+            )SQL"));
+            task.addBindValue(title);
+            task.addBindValue(QStringLiteral("由固定日程迁移为统一时间块"));
+            task.addBindValue(iso(QDateTime(start.date(), QTime(0, 0))));
+            task.addBindValue(iso(end));
+            task.addBindValue(static_cast<int>(DeadlineType::Hard));
+            task.addBindValue(durationMinutes);
+            task.addBindValue(durationMinutes / 60.0);
+            task.addBindValue(durationMinutes);
+            task.addBindValue(QStringLiteral("evening"));
+            task.addBindValue(0);
+            task.addBindValue(qMin(60, durationMinutes));
+            task.addBindValue(durationMinutes);
+            task.addBindValue(1);
+            task.addBindValue(static_cast<int>(ScheduleStatus::Scheduled));
+            task.addBindValue(static_cast<int>(Priority::Medium));
+            task.addBindValue(static_cast<int>(TaskStatus::Scheduled));
+            task.addBindValue(events.value(4));
+            task.addBindValue(createdAt);
+            task.addBindValue(updatedAt);
+            task.addBindValue(events.value(8));
+            if (!task.exec()) {
+                g_lastError = task.lastError().text();
+                return false;
+            }
+
+            QSqlQuery block(db);
+            block.prepare(QStringLiteral(R"SQL(
+                INSERT INTO time_blocks(
+                    task_id, start_time, end_time, source, schedule_run_id,
+                    explanation, completed_at, created_at, updated_at
+                )
+                VALUES(?, ?, ?, ?, NULL, ?, NULL, ?, ?)
+            )SQL"));
+            block.addBindValue(task.lastInsertId());
+            block.addBindValue(iso(start));
+            block.addBindValue(iso(end));
+            block.addBindValue(events.value(5).toBool()
+                                   ? static_cast<int>(BlockSource::Locked)
+                                   : static_cast<int>(BlockSource::UserDragged));
+            block.addBindValue(QStringLiteral("由固定日程迁移"));
+            block.addBindValue(createdAt);
+            block.addBindValue(updatedAt);
+            if (!block.exec()) {
+                g_lastError = block.lastError().text();
+                return false;
+            }
+        }
+
+        return execSql(db, QStringLiteral("DELETE FROM calendar_events"))
+            && setUserVersion(db, 5);
+    });
+}
 }
 
 bool Migrations::run(QSqlDatabase db)
@@ -398,6 +499,12 @@ bool Migrations::run(QSqlDatabase db)
         return false;
     }
     if (version < 3 && !migrateToV3(db)) {
+        return false;
+    }
+    if (version < 4 && !migrateToV4(db)) {
+        return false;
+    }
+    if (version < 5 && !migrateToV5(db)) {
         return false;
     }
     return execSql(db, QStringLiteral("PRAGMA foreign_keys = ON"));
@@ -489,12 +596,6 @@ bool Migrations::seed(QSqlDatabase db)
         }
     }
 
-    QSqlQuery event(db);
-    event.prepare(QStringLiteral(R"SQL(
-        INSERT INTO calendar_events(title, start_time, end_time, type, category_id,
-                                    is_locked, created_at, updated_at)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?)
-    )SQL"));
     const QDate today = QDate::currentDate();
     const QVector<std::tuple<QString, QDateTime, QDateTime, int>> events = {
         {QStringLiteral("Calculus class"), QDateTime(today, QTime(10, 0)), QDateTime(today, QTime(11, 40)), 1},
@@ -502,15 +603,54 @@ bool Migrations::seed(QSqlDatabase db)
         {QStringLiteral("Laboratory"), QDateTime(today.addDays(2), QTime(9, 0)), QDateTime(today.addDays(2), QTime(11, 30)), 3}
     };
     for (const auto& item : events) {
-        event.addBindValue(std::get<0>(item));
-        event.addBindValue(iso(std::get<1>(item)));
-        event.addBindValue(iso(std::get<2>(item)));
-        event.addBindValue(static_cast<int>(EventType::Course));
-        event.addBindValue(std::get<3>(item));
-        event.addBindValue(1);
-        event.addBindValue(now);
-        event.addBindValue(now);
-        if (!event.exec()) {
+        const int minutes = static_cast<int>(std::get<1>(item).secsTo(std::get<2>(item)) / 60);
+        QSqlQuery seededTask(db);
+        seededTask.prepare(QStringLiteral(R"SQL(
+            INSERT INTO tasks(
+                title, notes, start_date, deadline, deadline_type,
+                estimated_minutes, estimated_hours, remaining_minutes,
+                preferred_study_time, auto_schedule_enabled,
+                min_chunk_minutes, ideal_chunk_minutes, effort_level,
+                schedule_status, priority, status, category_id,
+                completed_at, created_at, updated_at
+            )
+            VALUES(?, '', ?, ?, ?, ?, ?, ?, 'evening', 0, ?, ?, 1, ?, ?, ?, ?, NULL, ?, ?)
+        )SQL"));
+        seededTask.addBindValue(std::get<0>(item));
+        seededTask.addBindValue(iso(QDateTime(std::get<1>(item).date(), QTime(0, 0))));
+        seededTask.addBindValue(iso(std::get<2>(item)));
+        seededTask.addBindValue(static_cast<int>(DeadlineType::Hard));
+        seededTask.addBindValue(minutes);
+        seededTask.addBindValue(minutes / 60.0);
+        seededTask.addBindValue(minutes);
+        seededTask.addBindValue(qMin(60, minutes));
+        seededTask.addBindValue(minutes);
+        seededTask.addBindValue(static_cast<int>(ScheduleStatus::Scheduled));
+        seededTask.addBindValue(static_cast<int>(Priority::Medium));
+        seededTask.addBindValue(static_cast<int>(TaskStatus::Scheduled));
+        seededTask.addBindValue(std::get<3>(item));
+        seededTask.addBindValue(now);
+        seededTask.addBindValue(now);
+        if (!seededTask.exec()) {
+            db.rollback();
+            return false;
+        }
+
+        QSqlQuery seededBlock(db);
+        seededBlock.prepare(QStringLiteral(R"SQL(
+            INSERT INTO time_blocks(
+                task_id, start_time, end_time, source, schedule_run_id,
+                explanation, completed_at, created_at, updated_at
+            )
+            VALUES(?, ?, ?, ?, NULL, 'Demo unified block', NULL, ?, ?)
+        )SQL"));
+        seededBlock.addBindValue(seededTask.lastInsertId());
+        seededBlock.addBindValue(iso(std::get<1>(item)));
+        seededBlock.addBindValue(iso(std::get<2>(item)));
+        seededBlock.addBindValue(static_cast<int>(BlockSource::Locked));
+        seededBlock.addBindValue(now);
+        seededBlock.addBindValue(now);
+        if (!seededBlock.exec()) {
             db.rollback();
             return false;
         }

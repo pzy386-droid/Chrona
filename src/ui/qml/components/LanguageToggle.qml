@@ -9,8 +9,8 @@ Rectangle {
     width: 86
     height: 38
     radius: 8
-    color: "#161A23"
-    border.color: "#2A3142"
+    color: Theme.surface
+    border.color: Theme.border
     border.width: 1
 
     RowLayout {
@@ -28,14 +28,14 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: 6
-                color: root.currentLocale === modelData.locale ? "#7C8CFF" : "transparent"
+                color: root.currentLocale === modelData.locale ? Theme.accentBright : "transparent"
 
                 Behavior on color { ColorAnimation { duration: 160 } }
 
                 Text {
                     anchors.centerIn: parent
                     text: modelData.label
-                    color: root.currentLocale === modelData.locale ? "white" : "#9AA4B2"
+                    color: root.currentLocale === modelData.locale ? "white" : Theme.secondaryText
                     font.pixelSize: 12
                     font.weight: Font.DemiBold
                 }

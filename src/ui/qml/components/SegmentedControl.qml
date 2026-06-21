@@ -9,8 +9,8 @@ Rectangle {
     width: Math.max(112, options.length * 56)
     height: 38
     radius: 8
-    color: "#161A23"
-    border.color: "#2A3142"
+    color: Theme.surface
+    border.color: Theme.border
     border.width: 1
 
     RowLayout {
@@ -25,14 +25,14 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 radius: 6
-                color: root.selectedIndex === index ? "#252C3E" : "transparent"
+                color: root.selectedIndex === index ? Theme.surfacePressed : "transparent"
 
                 Behavior on color { ColorAnimation { duration: 150 } }
 
                 Text {
                     anchors.centerIn: parent
                     text: modelData
-                    color: root.selectedIndex === index ? "#E6EAF2" : "#9AA4B2"
+                    color: root.selectedIndex === index ? Theme.primaryText : Theme.secondaryText
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                 }

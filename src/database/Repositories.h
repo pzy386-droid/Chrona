@@ -70,6 +70,7 @@ public:
     bool moveBlock(int blockId, const QDateTime& start, const QDateTime& end) const;
     bool setBlockSource(int blockId, BlockSource source) const;
     bool completeBlock(int blockId) const;
+    bool setBlockCompleted(int blockId, bool completed) const;
     bool upsertBlocks(const QVector<TimeBlock>& blocks, const QVector<int>& removeBlockIds = {},
                       QVector<int>* blockIds = nullptr) const;
     bool commitSchedule(const ScheduleWindow& window, const QVector<TimeBlock>& blocks,

@@ -60,6 +60,8 @@ QVariant TaskListModel::data(const QModelIndex& index, int role) const
         return task.categoryName;
     case CategoryColorRole:
         return task.categoryColor.isEmpty() ? QStringLiteral("#7C8CFF") : task.categoryColor;
+    case ScheduleTextRole:
+        return m_scheduleTextByTaskId.value(task.id, task.deadline.toString(QStringLiteral("yyyy-MM-dd HH:mm")));
     case SelectedRole:
         return task.id == m_selectedTaskId;
     default:
@@ -82,15 +84,47 @@ QHash<int, QByteArray> TaskListModel::roleNames() const
         {StatusRole, "status"},
         {CategoryNameRole, "categoryName"},
         {CategoryColorRole, "categoryColor"},
+        {ScheduleTextRole, "scheduleText"},
         {SelectedRole, "selected"}
     };
 }
 
 void TaskListModel::setTasks(const QVector<Task>& tasks)
 {
+    m_allTasks = tasks;
+    rebuildVisibleTasks();
+}
+
+void TaskListModel::setDailyFilter(const QDate& date, const QSet<int>& scheduledTaskIds)
+{
+    m_filterDate = date;
+    m_scheduledTaskIds = scheduledTaskIds;
+    rebuildVisibleTasks();
+}
+
+void TaskListModel::rebuildVisibleTasks()
+{
     beginResetModel();
-    m_tasks = tasks;
+    m_tasks.clear();
+    for (const Task& task : m_allTasks) {
+        if (task.status == TaskStatus::Done || task.status == TaskStatus::Archived) {
+            continue;
+        }
+        const bool scheduledToday = m_scheduledTaskIds.contains(task.id);
+        const bool dueToday = task.deadline.isValid() && task.deadline.date() == m_filterDate;
+        if (scheduledToday || dueToday) {
+            m_tasks.push_back(task);
+        }
+    }
     endResetModel();
+}
+
+void TaskListModel::setScheduleTextByTaskId(const QHash<int, QString>& scheduleTextByTaskId)
+{
+    m_scheduleTextByTaskId = scheduleTextByTaskId;
+    if (!m_tasks.isEmpty()) {
+        emit dataChanged(index(0, 0), index(m_tasks.size() - 1, 0), {ScheduleTextRole});
+    }
 }
 
 void TaskListModel::setSelectedTaskId(int taskId)
@@ -111,7 +145,7 @@ int TaskListModel::selectedTaskId() const
 
 std::optional<Task> TaskListModel::taskById(int taskId) const
 {
-    for (const auto& task : m_tasks) {
+    for (const auto& task : m_allTasks) {
         if (task.id == taskId) {
             return task;
         }
