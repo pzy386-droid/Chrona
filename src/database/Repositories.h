@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/models/CalendarEvent.h"
+#include "core/models/DeadlineReminder.h"
 #include "core/models/StudyFrame.h"
 #include "core/models/Task.h"
 #include "core/models/TimeBlock.h"
@@ -52,6 +53,22 @@ public:
                       const QVector<int>& removeEventIds = {}, QVector<int>* eventIds = nullptr) const;
     QString lastError() const;
     bool setCategoryColor(const QString& categoryName, const QString& color) const;
+
+private:
+    int ensureCategory(const QString& name) const;
+    QSqlDatabase m_db;
+    mutable QString m_lastError;
+};
+
+class DeadlineReminderRepository {
+public:
+    explicit DeadlineReminderRepository(QSqlDatabase db);
+    QVector<DeadlineReminder> reminders(bool includeArchived = false) const;
+    int createReminder(const DeadlineReminder& reminder) const;
+    bool updateReminder(const DeadlineReminder& reminder) const;
+    bool setStatus(int reminderId, DeadlineReminderStatus status) const;
+    bool deleteReminder(int reminderId) const;
+    QString lastError() const;
 
 private:
     int ensureCategory(const QString& name) const;

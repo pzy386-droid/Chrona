@@ -11,7 +11,7 @@
 #include <tuple>
 
 namespace {
-constexpr int kCurrentVersion = 3;
+constexpr int kCurrentVersion = 4;
 QString g_lastError;
 
 QString iso(const QDateTime& dateTime)
@@ -372,6 +372,30 @@ bool migrateToV3(QSqlDatabase db)
     }
     return true;
 }
+
+bool migrateToV4(QSqlDatabase db)
+{
+    return runInTransaction(db, [&] {
+        return execSql(db, QStringLiteral(R"SQL(
+            CREATE TABLE IF NOT EXISTS deadline_reminders (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              title TEXT NOT NULL,
+              notes TEXT,
+              due_at TEXT NOT NULL,
+              category_id INTEGER,
+              remind_days_before INTEGER NOT NULL DEFAULT 3,
+              status INTEGER NOT NULL DEFAULT 0,
+              completed_at TEXT,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              FOREIGN KEY(category_id) REFERENCES categories(id) ON DELETE SET NULL
+            )
+        )SQL"))
+            && execSql(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_deadline_reminders_due_at ON deadline_reminders(due_at)"))
+            && execSql(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_deadline_reminders_status ON deadline_reminders(status)"))
+            && setUserVersion(db, 4);
+    });
+}
 }
 
 bool Migrations::run(QSqlDatabase db)
@@ -398,6 +422,9 @@ bool Migrations::run(QSqlDatabase db)
         return false;
     }
     if (version < 3 && !migrateToV3(db)) {
+        return false;
+    }
+    if (version < 4 && !migrateToV4(db)) {
         return false;
     }
     return execSql(db, QStringLiteral("PRAGMA foreign_keys = ON"));

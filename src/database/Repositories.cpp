@@ -666,6 +666,190 @@ QString CalendarRepository::lastError() const
     return m_lastError;
 }
 
+DeadlineReminderRepository::DeadlineReminderRepository(QSqlDatabase db)
+    : m_db(std::move(db))
+{
+}
+
+QVector<DeadlineReminder> DeadlineReminderRepository::reminders(bool includeArchived) const
+{
+    QVector<DeadlineReminder> reminders;
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(R"SQL(
+        SELECT r.id, r.title, r.notes, r.due_at, r.category_id, c.name, c.color,
+               r.remind_days_before, r.status, r.completed_at
+        FROM deadline_reminders r
+        LEFT JOIN categories c ON c.id = r.category_id
+        WHERE ? OR r.status != ?
+        ORDER BY r.status ASC, r.due_at ASC
+    )SQL"));
+    query.addBindValue(includeArchived ? 1 : 0);
+    query.addBindValue(static_cast<int>(DeadlineReminderStatus::Archived));
+    query.exec();
+    while (query.next()) {
+        DeadlineReminder reminder;
+        reminder.id = query.value(0).toInt();
+        reminder.title = query.value(1).toString();
+        reminder.notes = query.value(2).toString();
+        reminder.dueAt = fromIso(query.value(3));
+        if (!query.value(4).isNull()) {
+            reminder.categoryName = query.value(5).toString();
+            reminder.categoryColor = query.value(6).toString();
+        }
+        reminder.remindDaysBefore = query.value(7).toInt();
+        reminder.status = static_cast<DeadlineReminderStatus>(query.value(8).toInt());
+        reminder.completedAt = fromIso(query.value(9));
+        reminders.push_back(reminder);
+    }
+    return reminders;
+}
+
+int DeadlineReminderRepository::createReminder(const DeadlineReminder& reminder) const
+{
+    m_lastError.clear();
+    const QString title = reminder.title.trimmed();
+    if (title.isEmpty() || !reminder.dueAt.isValid()) {
+        m_lastError = QStringLiteral("Invalid deadline reminder");
+        return 0;
+    }
+
+    QSqlDatabase db = m_db;
+    if (!db.transaction()) {
+        m_lastError = db.lastError().text();
+        return 0;
+    }
+    const int categoryId = ensureCategory(reminder.categoryName);
+    const QString now = toIso(QDateTime::currentDateTime());
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(R"SQL(
+        INSERT INTO deadline_reminders(title, notes, due_at, category_id, remind_days_before,
+                                       status, completed_at, created_at, updated_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
+    )SQL"));
+    query.addBindValue(title);
+    query.addBindValue(reminder.notes.trimmed());
+    query.addBindValue(toIso(reminder.dueAt));
+    query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(qBound(0, reminder.remindDaysBefore, 365));
+    query.addBindValue(static_cast<int>(DeadlineReminderStatus::Open));
+    query.addBindValue(QVariant());
+    query.addBindValue(now);
+    query.addBindValue(now);
+    if (!query.exec()) {
+        rollbackWithError(db, m_lastError, query);
+        return 0;
+    }
+    const int reminderId = query.lastInsertId().toInt();
+    if (!db.commit()) {
+        m_lastError = db.lastError().text();
+        return 0;
+    }
+    return reminderId;
+}
+
+bool DeadlineReminderRepository::updateReminder(const DeadlineReminder& reminder) const
+{
+    m_lastError.clear();
+    const QString title = reminder.title.trimmed();
+    if (reminder.id <= 0 || title.isEmpty() || !reminder.dueAt.isValid()) {
+        m_lastError = QStringLiteral("Invalid deadline reminder update");
+        return false;
+    }
+
+    QSqlDatabase db = m_db;
+    if (!db.transaction()) {
+        m_lastError = db.lastError().text();
+        return false;
+    }
+    const int categoryId = ensureCategory(reminder.categoryName);
+    QSqlQuery query(db);
+    query.prepare(QStringLiteral(R"SQL(
+        UPDATE deadline_reminders
+        SET title = ?, notes = ?, due_at = ?, category_id = ?, remind_days_before = ?,
+            updated_at = ?
+        WHERE id = ?
+    )SQL"));
+    query.addBindValue(title);
+    query.addBindValue(reminder.notes.trimmed());
+    query.addBindValue(toIso(reminder.dueAt));
+    query.addBindValue(categoryId > 0 ? QVariant(categoryId) : QVariant());
+    query.addBindValue(qBound(0, reminder.remindDaysBefore, 365));
+    query.addBindValue(toIso(QDateTime::currentDateTime()));
+    query.addBindValue(reminder.id);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        return rollbackWithError(db, m_lastError, query);
+    }
+    if (!db.commit()) {
+        m_lastError = db.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool DeadlineReminderRepository::setStatus(int reminderId, DeadlineReminderStatus status) const
+{
+    if (reminderId <= 0) {
+        return false;
+    }
+    const QString now = toIso(QDateTime::currentDateTime());
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(R"SQL(
+        UPDATE deadline_reminders
+        SET status = ?, completed_at = ?, updated_at = ?
+        WHERE id = ?
+    )SQL"));
+    query.addBindValue(static_cast<int>(status));
+    query.addBindValue(status == DeadlineReminderStatus::Done ? QVariant(now) : QVariant());
+    query.addBindValue(now);
+    query.addBindValue(reminderId);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        m_lastError = query.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+bool DeadlineReminderRepository::deleteReminder(int reminderId) const
+{
+    if (reminderId <= 0) {
+        return false;
+    }
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral("DELETE FROM deadline_reminders WHERE id = ?"));
+    query.addBindValue(reminderId);
+    if (!query.exec() || query.numRowsAffected() != 1) {
+        m_lastError = query.lastError().text();
+        return false;
+    }
+    return true;
+}
+
+QString DeadlineReminderRepository::lastError() const
+{
+    return m_lastError;
+}
+
+int DeadlineReminderRepository::ensureCategory(const QString& name) const
+{
+    const QString normalized = name.trimmed().isEmpty() ? QStringLiteral("DDL") : name.trimmed();
+    QSqlQuery select(m_db);
+    select.prepare(QStringLiteral("SELECT id FROM categories WHERE name = ?"));
+    select.addBindValue(normalized);
+    if (select.exec() && select.next()) {
+        return select.value(0).toInt();
+    }
+
+    QSqlQuery insert(m_db);
+    insert.prepare(QStringLiteral("INSERT INTO categories(name, color) VALUES(?, ?)"));
+    insert.addBindValue(normalized);
+    insert.addBindValue(QStringLiteral("#F59E0B"));
+    if (!insert.exec()) {
+        m_lastError = insert.lastError().text();
+        return 0;
+    }
+    return insert.lastInsertId().toInt();
+}
+
 TimeBlockRepository::TimeBlockRepository(QSqlDatabase db)
     : m_db(std::move(db))
 {

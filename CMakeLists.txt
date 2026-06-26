@@ -29,6 +29,7 @@ qt_add_executable(Chrona
     src/core/models/ScheduleTypes.h
     src/core/models/StudyFrame.h
     src/core/models/Task.h
+    src/core/models/DeadlineReminder.h
     src/core/models/CalendarEvent.h
     src/core/models/TimeBlock.cpp
     src/core/models/TimeBlock.h
@@ -71,6 +72,7 @@ qt_add_qml_module(Chrona
         src/ui/qml/pages/CalendarPage.qml
         src/ui/qml/pages/TimelinePage.qml
         src/ui/qml/pages/MonthPage.qml
+        src/ui/qml/pages/DeadlinePage.qml
         src/ui/qml/panels/Sidebar.qml
         src/ui/qml/panels/TaskDetailPanel.qml
         src/ui/qml/panels/CurrentFocusPanel.qml

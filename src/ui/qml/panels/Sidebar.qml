@@ -51,7 +51,7 @@ Rectangle {
             }
 
             IconButton {
-                iconText: root.collapsed ? "›" : "‹"
+                iconText: root.collapsed ? ">" : "<"
                 tooltip: qsTr("收起侧栏")
                 onClicked: root.collapsed = !root.collapsed
             }
@@ -70,7 +70,8 @@ Rectangle {
             Repeater {
                 model: [
                     {label: qsTr("AI 今日计划"), mark: "#8B99FF", action: "dailyPlan"},
-                    {label: qsTr("时间轴"), mark: "#6C63FF", action: "timeline"},
+                    {label: qsTr("时间线"), mark: "#6C63FF", action: "timeline"},
+                    {label: qsTr("DDL 提醒"), mark: "#F59E0B", action: "deadlines"},
                     {label: qsTr("月历总览"), mark: "#A78BFA", action: "month"},
                     {label: qsTr("当前专注"), mark: "#00D68F", action: "focus"},
                     {label: qsTr("课程"), mark: "#FFB547", action: "courses"}
@@ -100,7 +101,7 @@ Rectangle {
                                 root.scrollToFocus()
                             } else if (modelData.action === "dailyPlan") {
                                 root.dailyPlanRequested()
-                            } else if (modelData.action === "timeline" || modelData.action === "month") {
+                            } else if (modelData.action === "timeline" || modelData.action === "month" || modelData.action === "deadlines") {
                                 root.navigateRequested(modelData.action)
                             }
                         }
@@ -121,9 +122,30 @@ Rectangle {
 
                         Text {
                             visible: !root.collapsed
+                            Layout.fillWidth: true
                             text: modelData.label
                             color: selected ? "#FFFFFF" : "#A6B0C3"
                             font.pixelSize: 13
+                            elide: Text.ElideRight
+                        }
+
+                        Rectangle {
+                            visible: !root.collapsed && modelData.action === "deadlines" && ScheduleService.urgentDeadlineCount > 0
+                            Layout.preferredWidth: Math.max(22, countText.implicitWidth + 12)
+                            Layout.preferredHeight: 20
+                            radius: 8
+                            color: "#3A2612"
+                            border.width: 1
+                            border.color: "#F59E0B"
+
+                            Text {
+                                id: countText
+                                anchors.centerIn: parent
+                                text: ScheduleService.urgentDeadlineCount
+                                color: "#FFD58A"
+                                font.pixelSize: 11
+                                font.weight: Font.DemiBold
+                            }
                         }
                     }
                 }
@@ -229,7 +251,7 @@ Rectangle {
                 Text {
                     Layout.preferredWidth: root.collapsed ? parent.width : implicitWidth
                     Layout.alignment: Qt.AlignVCenter
-                    text: "月"
+                    text: "✓"
                     color: "#FFF4B8"
                     font.pixelSize: root.collapsed ? 20 : 18
                     font.weight: Font.DemiBold

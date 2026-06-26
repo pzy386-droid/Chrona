@@ -204,12 +204,13 @@ QString repairedTitleFromInput(const QString& input)
 }
 }
 
-ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks,
+ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, DeadlineReminderRepository deadlines, TimeBlockRepository blocks,
                                  StudyFrameRepository studyFrames, SettingsRepository settings, BackupService backup,
                                  AIService* aiService, QObject* parent)
     : QObject(parent)
     , m_tasks(std::move(tasks))
     , m_calendar(std::move(calendar))
+    , m_deadlines(std::move(deadlines))
     , m_blocks(std::move(blocks))
     , m_studyFrames(std::move(studyFrames))
     , m_settings(std::move(settings))
@@ -311,6 +312,31 @@ QVariantMap ScheduleService::selectedDetail() const
 int ScheduleService::unscheduledCount() const
 {
     return m_unscheduledTaskIds.size();
+}
+
+int ScheduleService::urgentDeadlineCount() const
+{
+    int count = 0;
+    const QDate today = QDate::currentDate();
+    for (const DeadlineReminder& reminder : m_deadlines.reminders()) {
+        if (reminder.status != DeadlineReminderStatus::Open || !reminder.dueAt.isValid()) {
+            continue;
+        }
+        const int daysLeft = today.daysTo(reminder.dueAt.date());
+        if (daysLeft <= reminder.remindDaysBefore) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+QVariantList ScheduleService::deadlineReminders() const
+{
+    QVariantList list;
+    for (const DeadlineReminder& reminder : m_deadlines.reminders()) {
+        list.push_back(deadlineReminderToMap(reminder));
+    }
+    return list;
 }
 
 QVariantList ScheduleService::scheduleIssues() const
@@ -761,6 +787,89 @@ QVariantMap ScheduleService::addFixedEvent(const QString& title, int dayOffset, 
 
     reschedule();
     return {{"ok", true}, {"message", QObject::tr("固定时间已加入日程")}};
+}
+
+QVariantMap ScheduleService::addDeadlineReminder(const QString& title, const QString& dueText, const QString& notes, const QString& categoryName, int remindDaysBefore)
+{
+    const QString trimmedTitle = title.trimmed();
+    QDateTime dueAt = parseDateTimeText(dueText);
+    if (!dueAt.isValid()) {
+        const QDate dueDate = QDate::fromString(dueText.trimmed(), QStringLiteral("yyyy-MM-dd"));
+        if (dueDate.isValid()) {
+            dueAt = QDateTime(dueDate, QTime(23, 59));
+        }
+    }
+    if (trimmedTitle.isEmpty() || !dueAt.isValid()) {
+        return {{"ok", false}, {"message", QObject::tr("请输入标题和有效截止日期")}};
+    }
+
+    DeadlineReminder reminder;
+    reminder.title = trimmedTitle;
+    reminder.notes = notes.trimmed();
+    reminder.dueAt = dueAt;
+    reminder.categoryName = categoryName.trimmed().isEmpty() ? QStringLiteral("DDL") : categoryName.trimmed();
+    reminder.remindDaysBefore = qBound(0, remindDaysBefore, 365);
+    const int reminderId = m_deadlines.createReminder(reminder);
+    if (reminderId <= 0) {
+        return {{"ok", false}, {"message", QObject::tr("DDL 提醒创建失败：%1").arg(m_deadlines.lastError())}};
+    }
+    emit dataChanged();
+    return {{"ok", true}, {"message", QObject::tr("DDL 提醒已添加")}, {"id", reminderId}};
+}
+
+QVariantMap ScheduleService::updateDeadlineReminder(int reminderId, const QString& title, const QString& dueText, const QString& notes, const QString& categoryName, int remindDaysBefore)
+{
+    const QString trimmedTitle = title.trimmed();
+    QDateTime dueAt = parseDateTimeText(dueText);
+    if (!dueAt.isValid()) {
+        const QDate dueDate = QDate::fromString(dueText.trimmed(), QStringLiteral("yyyy-MM-dd"));
+        if (dueDate.isValid()) {
+            dueAt = QDateTime(dueDate, QTime(23, 59));
+        }
+    }
+    if (reminderId <= 0 || trimmedTitle.isEmpty() || !dueAt.isValid()) {
+        return {{"ok", false}, {"message", QObject::tr("DDL 提醒信息不完整")}};
+    }
+
+    DeadlineReminder reminder;
+    reminder.id = reminderId;
+    reminder.title = trimmedTitle;
+    reminder.notes = notes.trimmed();
+    reminder.dueAt = dueAt;
+    reminder.categoryName = categoryName.trimmed().isEmpty() ? QStringLiteral("DDL") : categoryName.trimmed();
+    reminder.remindDaysBefore = qBound(0, remindDaysBefore, 365);
+    if (!m_deadlines.updateReminder(reminder)) {
+        return {{"ok", false}, {"message", QObject::tr("DDL 提醒更新失败：%1").arg(m_deadlines.lastError())}};
+    }
+    emit dataChanged();
+    return {{"ok", true}, {"message", QObject::tr("DDL 提醒已更新")}};
+}
+
+QVariantMap ScheduleService::completeDeadlineReminder(int reminderId)
+{
+    if (!m_deadlines.setStatus(reminderId, DeadlineReminderStatus::Done)) {
+        return {{"ok", false}, {"message", QObject::tr("DDL 提醒完成失败")}};
+    }
+    emit dataChanged();
+    return {{"ok", true}, {"message", QObject::tr("DDL 已标记完成")}};
+}
+
+QVariantMap ScheduleService::archiveDeadlineReminder(int reminderId)
+{
+    if (!m_deadlines.setStatus(reminderId, DeadlineReminderStatus::Archived)) {
+        return {{"ok", false}, {"message", QObject::tr("DDL 提醒归档失败")}};
+    }
+    emit dataChanged();
+    return {{"ok", true}, {"message", QObject::tr("DDL 已归档")}};
+}
+
+QVariantMap ScheduleService::deleteDeadlineReminder(int reminderId)
+{
+    if (!m_deadlines.deleteReminder(reminderId)) {
+        return {{"ok", false}, {"message", QObject::tr("DDL 提醒删除失败")}};
+    }
+    emit dataChanged();
+    return {{"ok", true}, {"message", QObject::tr("DDL 已删除")}};
 }
 
 bool ScheduleService::setCategoryColor(const QString& categoryName, const QString& color)
@@ -2175,6 +2284,38 @@ QVariantMap ScheduleService::taskToMap(const Task& task) const
         {"status", static_cast<int>(task.status)},
         {"categoryColor", colorForPriority(task.priority, task.categoryColor)},
         {"completedAt", task.completedAt.isValid() ? deadlineText(task.completedAt) : QString()}
+    };
+}
+
+QVariantMap ScheduleService::deadlineReminderToMap(const DeadlineReminder& reminder) const
+{
+    const QDate today = QDate::currentDate();
+    const int daysLeft = reminder.dueAt.isValid() ? today.daysTo(reminder.dueAt.date()) : 0;
+    const bool open = reminder.status == DeadlineReminderStatus::Open;
+    const bool overdue = open && daysLeft < 0;
+    const bool reminderDue = open && daysLeft <= reminder.remindDaysBefore;
+    QString urgency = QStringLiteral("normal");
+    if (overdue) {
+        urgency = QStringLiteral("overdue");
+    } else if (reminderDue) {
+        urgency = daysLeft <= 1 ? QStringLiteral("critical") : QStringLiteral("soon");
+    }
+
+    return {
+        {"id", reminder.id},
+        {"title", reminder.title},
+        {"notes", reminder.notes},
+        {"dueText", deadlineText(reminder.dueAt)},
+        {"dueDateText", reminder.dueAt.date().toString(QStringLiteral("yyyy-MM-dd"))},
+        {"categoryName", reminder.categoryName.isEmpty() ? QStringLiteral("DDL") : reminder.categoryName},
+        {"categoryColor", reminder.categoryColor.isEmpty() ? QStringLiteral("#F59E0B") : reminder.categoryColor},
+        {"remindDaysBefore", reminder.remindDaysBefore},
+        {"daysLeft", daysLeft},
+        {"status", static_cast<int>(reminder.status)},
+        {"completedAt", reminder.completedAt.isValid() ? deadlineText(reminder.completedAt) : QString()},
+        {"overdue", overdue},
+        {"reminderDue", reminderDue},
+        {"urgency", urgency}
     };
 }
 

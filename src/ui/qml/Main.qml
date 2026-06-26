@@ -45,7 +45,7 @@ ApplicationWindow {
                 currentPage: window.currentPage
                 onNavigateRequested: function(page) {
                     window.currentPage = page
-                    if (page === "month") {
+                    if (page === "month" || page === "deadlines") {
                         window.detailOpen = false
                     }
                 }
@@ -62,7 +62,7 @@ ApplicationWindow {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: window.currentPage === "month" ? 1 : 0
+                currentIndex: window.currentPage === "deadlines" ? 2 : (window.currentPage === "month" ? 1 : 0)
 
                 TimelinePage {
                     id: timelinePage
@@ -78,6 +78,10 @@ ApplicationWindow {
                         window.currentPage = "timeline"
                         window.detailOpen = false
                     }
+                }
+
+                DeadlinePage {
+                    id: deadlinePage
                 }
             }
 

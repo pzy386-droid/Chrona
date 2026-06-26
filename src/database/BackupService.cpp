@@ -29,6 +29,7 @@ const QVector<TableSpec>& tableSpecs()
         {QStringLiteral("tasks"), QStringLiteral("tasks")},
         {QStringLiteral("schedule_runs"), QStringLiteral("scheduleRuns")},
         {QStringLiteral("calendar_events"), QStringLiteral("calendarEvents")},
+        {QStringLiteral("deadline_reminders"), QStringLiteral("deadlineReminders")},
         {QStringLiteral("time_blocks"), QStringLiteral("timeBlocks")},
         {QStringLiteral("study_frames"), QStringLiteral("studyFrames")},
         {QStringLiteral("app_settings"), QStringLiteral("settings")}
@@ -102,7 +103,7 @@ bool validateReferences(const QJsonObject& root, QString& error)
         const QJsonValue category = row.value(QStringLiteral("category_id"));
         return category.isNull() || category.isUndefined() || categoryIds.contains(category.toInt());
     };
-    for (const QString& key : {QStringLiteral("tasks"), QStringLiteral("calendarEvents"), QStringLiteral("studyFrames")}) {
+    for (const QString& key : {QStringLiteral("tasks"), QStringLiteral("calendarEvents"), QStringLiteral("deadlineReminders"), QStringLiteral("studyFrames")}) {
         for (const QJsonValue& value : root.value(key).toArray()) {
             if (!value.isObject() || !validOptionalCategory(value.toObject())) {
                 error = QStringLiteral("%1 contains an unknown category reference").arg(key);
@@ -188,16 +189,21 @@ bool BackupService::importFromFile(const QString& filePath) const
         return false;
     }
 
-    const QJsonObject root = document.object();
+    QJsonObject root = document.object();
     if (root.value(QStringLiteral("backupFormatVersion")).toInt() != kBackupFormatVersion) {
         m_lastError = QStringLiteral("Unsupported backup format version");
         return false;
     }
-    if (root.value(QStringLiteral("schemaVersion")).toInt() > Migrations::currentVersion()) {
+    const int backupSchemaVersion = root.value(QStringLiteral("schemaVersion")).toInt();
+    if (backupSchemaVersion > Migrations::currentVersion()) {
         m_lastError = QStringLiteral("Backup schema is newer than this application");
         return false;
     }
     for (const TableSpec& spec : tableSpecs()) {
+        if (spec.jsonKey == QStringLiteral("deadlineReminders") && backupSchemaVersion < 4
+            && root.value(spec.jsonKey).isUndefined()) {
+            root.insert(spec.jsonKey, QJsonArray());
+        }
         if (!root.value(spec.jsonKey).isArray()) {
             m_lastError = QStringLiteral("Backup is missing %1").arg(spec.jsonKey);
             return false;
@@ -214,6 +220,7 @@ bool BackupService::importFromFile(const QString& filePath) const
     }
     const QStringList deleteOrder = {
         QStringLiteral("time_blocks"),
+        QStringLiteral("deadline_reminders"),
         QStringLiteral("calendar_events"),
         QStringLiteral("study_frames"),
         QStringLiteral("tasks"),

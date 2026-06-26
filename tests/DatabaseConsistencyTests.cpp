@@ -20,6 +20,7 @@ private slots:
     void demoSeedCreatesCompleteDataset();
     void legacyDatabaseMigratesWithoutDataLoss();
     void taskCategoryAndColorPersist();
+    void deadlineReminderStaysOutOfTaskScheduling();
     void batchBlockFailureRollsBack();
     void deletingTaskCascadesToBlocks();
     void archivingTaskPreservesBlocksAndRemovesItFromActiveTasks();
@@ -147,6 +148,30 @@ void DatabaseConsistencyTests::taskCategoryAndColorPersist()
     QCOMPARE(reloaded[0].title, QStringLiteral("Renamed task"));
     QCOMPARE(reloaded[0].categoryName, QStringLiteral("Renamed category"));
     QCOMPARE(reloaded[0].categoryColor, QStringLiteral("#ABCDEF"));
+}
+
+void DatabaseConsistencyTests::deadlineReminderStaysOutOfTaskScheduling()
+{
+    DeadlineReminderRepository deadlines(m_db);
+    DeadlineReminder reminder;
+    reminder.title = QStringLiteral("MOOC deadline");
+    reminder.notes = QStringLiteral("Use spare time");
+    reminder.dueAt = QDateTime(QDate::currentDate().addDays(10), QTime(23, 59));
+    reminder.categoryName = QStringLiteral("Course");
+    reminder.remindDaysBefore = 7;
+
+    const int reminderId = deadlines.createReminder(reminder);
+    QVERIFY2(reminderId > 0, qPrintable(deadlines.lastError()));
+    QCOMPARE(deadlines.reminders().size(), 1);
+    QCOMPARE(deadlines.reminders().first().title, QStringLiteral("MOOC deadline"));
+
+    TaskRepository tasks(m_db);
+    QCOMPARE(tasks.activeTasks().size(), 0);
+
+    QVERIFY(deadlines.setStatus(reminderId, DeadlineReminderStatus::Done));
+    const QVector<DeadlineReminder> stored = deadlines.reminders();
+    QCOMPARE(stored.size(), 1);
+    QCOMPARE(static_cast<int>(stored.first().status), static_cast<int>(DeadlineReminderStatus::Done));
 }
 
 void DatabaseConsistencyTests::batchBlockFailureRollsBack()

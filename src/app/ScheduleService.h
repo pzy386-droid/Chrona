@@ -24,13 +24,15 @@ class ScheduleService : public QObject {
     Q_PROPERTY(QVariantMap selectedTask READ selectedTask NOTIFY selectedTaskChanged)
     Q_PROPERTY(QVariantMap selectedDetail READ selectedDetail NOTIFY selectedTaskChanged)
     Q_PROPERTY(int unscheduledCount READ unscheduledCount NOTIFY dataChanged)
+    Q_PROPERTY(int urgentDeadlineCount READ urgentDeadlineCount NOTIFY dataChanged)
+    Q_PROPERTY(QVariantList deadlineReminders READ deadlineReminders NOTIFY dataChanged)
     Q_PROPERTY(QVariantList scheduleIssues READ scheduleIssues NOTIFY dataChanged)
     Q_PROPERTY(bool demoModeEnabled READ demoModeEnabled NOTIFY dataChanged)
     Q_PROPERTY(QString persistenceError READ persistenceError NOTIFY dataChanged)
     Q_PROPERTY(QString selectedDateText READ selectedDateText NOTIFY selectedDateChanged)
 
 public:
-    ScheduleService(TaskRepository tasks, CalendarRepository calendar, TimeBlockRepository blocks,
+    ScheduleService(TaskRepository tasks, CalendarRepository calendar, DeadlineReminderRepository deadlines, TimeBlockRepository blocks,
                     StudyFrameRepository studyFrames, SettingsRepository settings, BackupService backup,
                     AIService* aiService = nullptr, QObject* parent = nullptr);
 
@@ -42,6 +44,8 @@ public:
     QVariantMap selectedTask() const;
     QVariantMap selectedDetail() const;
     int unscheduledCount() const;
+    int urgentDeadlineCount() const;
+    QVariantList deadlineReminders() const;
     QVariantList scheduleIssues() const;
     bool demoModeEnabled() const;
     QString persistenceError() const;
@@ -64,6 +68,11 @@ public:
     Q_INVOKABLE QVariantList monthOverview(int year, int month) const;
     Q_INVOKABLE QVariantMap updateCategoryColor(const QString& categoryName, const QString& color);
     Q_INVOKABLE QVariantMap addFixedEvent(const QString& title, int dayOffset, int startMinute, int durationMinutes, bool locked, const QString& categoryName);
+    Q_INVOKABLE QVariantMap addDeadlineReminder(const QString& title, const QString& dueText, const QString& notes, const QString& categoryName, int remindDaysBefore);
+    Q_INVOKABLE QVariantMap updateDeadlineReminder(int reminderId, const QString& title, const QString& dueText, const QString& notes, const QString& categoryName, int remindDaysBefore);
+    Q_INVOKABLE QVariantMap completeDeadlineReminder(int reminderId);
+    Q_INVOKABLE QVariantMap archiveDeadlineReminder(int reminderId);
+    Q_INVOKABLE QVariantMap deleteDeadlineReminder(int reminderId);
     Q_INVOKABLE bool setCategoryColor(const QString& categoryName, const QString& color);
     Q_INVOKABLE QVariantMap updateSelectedEvent(const QString& title, int dayIndex, const QString& startText, const QString& endText, bool locked, const QString& categoryName);
     Q_INVOKABLE QVariantMap scheduleSelectedEventBlocks(const QString& title, int startDayIndex, int endDayIndex, const QString& startText, const QString& endText, bool locked, const QString& categoryName);
@@ -105,6 +114,7 @@ private:
     void rebuildTimeline(const QVector<Task>& tasks, const QVector<CalendarEvent>& events, const QVector<TimeBlock>& blocks);
     void rebuildCapacityStats(const QVector<TimeBlock>& blocks);
     QVariantMap taskToMap(const Task& task) const;
+    QVariantMap deadlineReminderToMap(const DeadlineReminder& reminder) const;
     QVariantMap eventToDetailMap(const TimelineItem& item) const;
     ScheduleContext buildAIContext(const QString& mode) const;
     QVariantMap localAIPlan(const QString& mode) const;
@@ -112,6 +122,7 @@ private:
 
     TaskRepository m_tasks;
     CalendarRepository m_calendar;
+    DeadlineReminderRepository m_deadlines;
     TimeBlockRepository m_blocks;
     StudyFrameRepository m_studyFrames;
     SettingsRepository m_settings;
