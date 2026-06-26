@@ -1,4 +1,4 @@
-﻿import QtQuick
+import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Chrona
@@ -11,12 +11,46 @@ Item {
     property real timelineMinuteHeight: 1.18
     property real timelineColumnWidth: 190
     property bool focusActive: false
-    property int focusDurationSeconds: 25 * 60
-    property int focusRemainingSeconds: focusDurationSeconds
+    property int focusDurationSeconds: 0
+    property int focusRemainingSeconds: 0
+    property double focusStartMs: 0
+    property double focusEndMs: 0
+    property bool focusCanComplete: false
     property var aiDraft: ({})
     property var aiDrafts: []
     property bool aiDraftLoading: false
-    property bool historicalView: ScheduleService.selectedDateText !== Qt.formatDate(new Date(), "yyyy-MM-dd")
+    readonly property date selectedDateValue: new Date(ScheduleService.selectedDateText + "T00:00:00")
+    readonly property date todayValue: {
+        var value = new Date()
+        value.setHours(0, 0, 0, 0)
+        return value
+    }
+    property bool historicalView: {
+        if (viewMode === "day") {
+            return selectedDateValue < todayValue
+        }
+        var weekEnd = new Date(selectedDateValue)
+        weekEnd.setDate(weekEnd.getDate() + 6)
+        return weekEnd < todayValue
+    }
+    property int greetingIndex: 0
+    readonly property var greetingPool: [
+        { icon: "👋", title: qsTr("欢迎回来"), subtitle: qsTr("Chrona 已为今天生成学习计划") },
+        { icon: "☕", title: qsTr("今天也慢慢进入状态"), subtitle: qsTr("先看当前专注，再让时间块接住任务") },
+        { icon: "🌙", title: qsTr("晚上好，适合收束一下"), subtitle: qsTr("把剩下的学习安排交给 Chrona 整理") },
+        { icon: "✨", title: qsTr("新的时间线已经就位"), subtitle: qsTr("重要任务会优先占住清醒时段") },
+        { icon: "🧭", title: qsTr("今天从一个清晰目标开始"), subtitle: qsTr("Chrona 会避开冲突并动态重排") },
+        { icon: "📚", title: qsTr("学习节奏已准备好"), subtitle: qsTr("先完成眼前这一块，其他交给 Scheduler") },
+        { icon: "⚡", title: qsTr("进入高效模式"), subtitle: qsTr("高优先级任务会被放到更合适的位置") },
+        { icon: "🌿", title: qsTr("保持轻一点的节奏"), subtitle: qsTr("日程会跟着任务变化自动调整") },
+        { icon: "🎯", title: qsTr("聚焦最重要的一件事"), subtitle: qsTr("当前专注会告诉你现在该做什么") },
+        { icon: "🪄", title: qsTr("让计划自己长出来"), subtitle: qsTr("输入一句话，Chrona 会生成可确认的草稿") }
+    ]
+
+    Component.onCompleted: {
+        ScheduleService.goToToday()
+        greetingIndex = Math.floor(Math.random() * greetingPool.length)
+    }
 
     function formatFocusTime(seconds) {
         var m = Math.floor(seconds / 60)
@@ -26,14 +60,43 @@ Item {
 
     function endFocus(completeTask) {
         focusExitConfirmPopup.close()
+        var result = ({ ok: true, message: "" })
         if (completeTask && ScheduleService.focusItem.blockId > 0) {
-            ScheduleService.completeBlock(ScheduleService.focusItem.blockId)
+            result = ScheduleService.completeBlock(ScheduleService.focusItem.blockId)
         } else {
-            ScheduleService.stopFocus()
+            result = ScheduleService.stopFocus()
+        }
+        if (result && result.ok === false) {
+            quickAddToast.kind = "danger"
+            quickAddToast.text = result.message || qsTr("操作失败")
+            quickAddToast.open()
+            return
         }
         root.focusActive = false
         focusPanel.active = false
         focusTimer.stop()
+        if (result && result.message) {
+            quickAddToast.kind = "success"
+            quickAddToast.text = result.message
+            quickAddToast.open()
+        }
+    }
+
+    function beginFocusSession() {
+        var item = ScheduleService.focusItem || ({})
+        root.focusStartMs = Number(item.startMs || Date.now())
+        root.focusEndMs = Number(item.endMs || (Date.now() + 25 * 60 * 1000))
+        root.focusDurationSeconds = Math.max(60, Math.round((root.focusEndMs - root.focusStartMs) / 1000))
+        root.updateFocusClock()
+        root.focusActive = true
+        focusPanel.active = true
+        focusTimer.restart()
+    }
+
+    function updateFocusClock() {
+        var now = Date.now()
+        root.focusRemainingSeconds = Math.max(0, Math.ceil((root.focusEndMs - now) / 1000))
+        root.focusCanComplete = root.focusEndMs > 0 && now >= root.focusEndMs
     }
 
     function requestEndFocus() {
@@ -45,18 +108,20 @@ Item {
     function scrollToFocusBlock() {
         var focusItem = ScheduleService.focusItem
         if (!focusItem || !focusItem.taskId || focusItem.taskId <= 0) {
-            console.log("No focus item available"
-)
+            console.log("No focus item available")
             return
         }
 
-        console.log("Scrolling to focus block for task:",
- focusItem.taskId)
-        ScheduleService.selectTask(focusItem.taskId)
+        console.log("Scrolling to focus block for task:", focusItem.taskId)
+        root.viewMode = "week"
+        if (focusItem.blockId && focusItem.blockId > 0) {
+            ScheduleService.selectTimelineItem(focusItem.taskId, focusItem.blockId)
+        } else {
+            ScheduleService.selectTask(focusItem.taskId)
+        }
 
         if (!timelineView) {
-            console.log("timelineView not found"
-)
+            console.log("timelineView not found")
             return
         }
 
@@ -64,8 +129,7 @@ Item {
         var model = ScheduleService.timelineModel
 
         if (!model) {
-            console.log("Timeline model not found"
-)
+            console.log("Timeline model not found")
             return
         }
 
@@ -79,16 +143,11 @@ Item {
 
         for (var i = 0; i < count; i++) {
             try {
-                var index = model.index(i,
- 0)
-                var itemId = model.data(index,
- IdRole)
-                var itemDayIndex = model.data(index,
- DayIndexRole)
-                var itemStartMinute = model.data(index,
- StartMinuteRole)
-                var itemTaskId = model.data(index,
- TaskIdRole)
+                var index = model.index(i, 0)
+                var itemId = model.data(index, IdRole)
+                var itemDayIndex = model.data(index, DayIndexRole)
+                var itemStartMinute = model.data(index, StartMinuteRole)
+                var itemTaskId = model.data(index, TaskIdRole)
 
                 var isCurrentView = root.viewMode === "week"
                     ? (itemDayIndex >= 0 && itemDayIndex < 7)
@@ -96,26 +155,71 @@ Item {
 
                 if (isCurrentView && (itemId === blockId || (blockId === 0 && itemTaskId === focusItem.taskId))) {
                     targetY = (itemStartMinute - timelineView.dayStartMinute) * root.timelineMinuteHeight
-                    console.log("Found block at Y:",
- targetY)
+                    console.log("Found block at Y:", targetY)
                     break
                 }
             } catch(e) {
-                console.log("Error accessing model data at index", i, ":",
- e)
+                console.log("Error accessing model data at index", i, ":", e)
             }
         }
 
         var flickable = timelineView.flickable
         if (flickable) {
-            var targetContentY = Math.max(0,
- targetY - flickable.height / 3)
-            console.log("Scrolling to Y:",
- targetContentY)
+            var targetContentY = Math.max(0, targetY - flickable.height / 3)
+            console.log("Scrolling to Y:", targetContentY)
             flickable.contentY = targetContentY
         } else {
-            console.log("Flickable not found"
-)
+            console.log("Flickable not found")
+        }
+    }
+
+    function scrollToCourses() {
+        var model = ScheduleService.timelineModel
+        if (!model || !timelineView) {
+            return
+        }
+
+        var IdRole = 257
+        var TaskIdRole = 258
+        var DayIndexRole = 264
+        var StartMinuteRole = 265
+        var IsEventRole = 269
+        var count = model.rowCount()
+        var courseId = 0
+        var courseTaskId = 0
+        var courseDayIndex = 2147483647
+        var courseStartMinute = 2147483647
+
+        for (var i = 0; i < count; i++) {
+            var index = model.index(i, 0)
+            if (!model.data(index, IsEventRole)) {
+                continue
+            }
+
+            var dayIndex = model.data(index, DayIndexRole)
+            var startMinute = model.data(index, StartMinuteRole)
+            if (dayIndex < 0 || dayIndex >= 7) {
+                continue
+            }
+            if (dayIndex < courseDayIndex
+                    || (dayIndex === courseDayIndex && startMinute < courseStartMinute)) {
+                courseId = model.data(index, IdRole)
+                courseTaskId = model.data(index, TaskIdRole)
+                courseDayIndex = dayIndex
+                courseStartMinute = startMinute
+            }
+        }
+
+        if (courseId === 0) {
+            return
+        }
+
+        root.viewMode = "week"
+        ScheduleService.selectTimelineItem(courseTaskId, courseId)
+        var flickable = timelineView.flickable
+        if (flickable) {
+            var targetY = (courseStartMinute - timelineView.dayStartMinute) * root.timelineMinuteHeight
+            flickable.contentY = Math.max(0, targetY - flickable.height / 3)
         }
     }
 
@@ -161,7 +265,7 @@ Item {
             aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
             aiDraftNotes.text = root.aiDraft.notes || ""
             aiDraftReason.text = root.aiDraft.explanation || result.message || ""
-            aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek 规划草稿") : qsTr("本地规则草稿")
+            aiDraftSource.text = (result.source === "deepseek") ? qsTr("Chrona AI 规划草稿") : qsTr("本地规则草稿")
             if (!aiDraftPopup.opened) {
                 aiDraftPopup.open()
             }
@@ -178,12 +282,9 @@ Item {
         interval: 1000
         repeat: true
         running: root.focusActive
+        triggeredOnStart: true
         onTriggered: {
-            if (root.focusRemainingSeconds > 0) {
-                root.focusRemainingSeconds--
-            } else {
-                root.endFocus(false)
-            }
+            root.updateFocusClock()
         }
     }
 
@@ -212,11 +313,11 @@ Item {
 
             radius: 14
 
-            color: "#161B22"
+            color: Theme.surfaceElevated
             clip: true
 
             border.width: 1
-            border.color: "#2A3140"
+            border.color: Theme.border
 
             RowLayout {
                 anchors.fill: parent
@@ -229,8 +330,8 @@ Item {
                     spacing: 3
 
                     Text {
-                        text: "馃憢 娆㈣繋鍥炴潵"
-                        color: "#FFFFFF"
+                        text: greetingPool[greetingIndex].icon + " " + greetingPool[greetingIndex].title
+                        color: Theme.strongText
                         font.pixelSize: topHeader.compact ? 15 : 18
                         font.bold: true
                         elide: Text.ElideRight
@@ -239,8 +340,8 @@ Item {
 
                     Text {
                         visible: !topHeader.dense
-                        text: "Chrona 宸蹭负浠婂ぉ鐢熸垚瀛︿範璁″垝"
-                        color: "#9AA4B2"
+                        text: greetingPool[greetingIndex].subtitle
+                        color: Theme.secondaryText
                         font.pixelSize: 12
                         elide: Text.ElideRight
                         Layout.fillWidth: true
@@ -249,60 +350,8 @@ Item {
                     Text {
                         visible: false
                         text: Qt.formatDate(new Date(), "yyyy-MM-dd")
-                        color: "#677184"
+                        color: Theme.mutedText
                         font.pixelSize: 11
-                    }
-                }
-
-                Rectangle {
-                    visible: !topHeader.dense
-                    Layout.preferredWidth: topHeader.compact ? 70 : 82
-                    Layout.preferredHeight: topHeader.compact ? 42 : 48
-                    radius: 10
-
-                    color: "#202638"
-
-                    Column {
-                        anchors.centerIn: parent
-
-                        Text {
-                            text: ScheduleService.taskModel.count
-                            color: "white"
-                            font.pixelSize: 18
-                            font.bold: true
-                        }
-
-                        Text {
-                            text: "浠诲姟"
-                            color: "#9AA4B2"
-                            font.pixelSize: 10
-                        }
-                    }
-                }
-
-                Rectangle {
-                    visible: !topHeader.dense
-                    Layout.preferredWidth: topHeader.compact ? 70 : 82
-                    Layout.preferredHeight: topHeader.compact ? 42 : 48
-                    radius: 10
-
-                    color: "#202638"
-
-                    Column {
-                        anchors.centerIn: parent
-
-                        Text {
-                            text: ScheduleService.unscheduledCount
-                            color: "#FFB547"
-                            font.pixelSize: 18
-                            font.bold: true
-                        }
-
-                        Text {
-                            text: "待规划"
-                            color: "#9AA4B2"
-                            font.pixelSize: 10
-                        }
                     }
                 }
 
@@ -355,12 +404,8 @@ Item {
                     }
                 }
 
-                LanguageToggle {
+                ThemeToggle {
                     visible: topHeader.width > 1120
-                    currentLocale: LocaleService.locale
-                    onLocaleRequested: function(locale) {
-                        LocaleService.setLocale(locale)
-                    }
                 }
             }
         }
@@ -372,9 +417,7 @@ Item {
             unscheduledCount: ScheduleService.unscheduledCount
             scheduleIssues: ScheduleService.scheduleIssues
             onFocusStarted: {
-                root.focusRemainingSeconds = root.focusDurationSeconds
-                root.focusActive = true
-                focusTimer.restart()
+                root.beginFocusSession()
             }
             onFocusStopRequested: root.requestEndFocus()
             onRescheduleRequested: {
@@ -390,9 +433,9 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 0
             radius: 8
-            color: "#161A23"
+            color: Theme.surface
             border.width: 1
-            border.color: "#3A2A2A"
+            border.color: Theme.dangerBorder
 
             RowLayout {
                 anchors.fill: parent
@@ -403,7 +446,7 @@ Item {
                     width: 5
                     Layout.fillHeight: true
                     radius: 3
-                    color: "#FF7A59"
+                    color: Theme.error
                 }
 
                 ColumnLayout {
@@ -415,13 +458,13 @@ Item {
                         Text {
                             Layout.fillWidth: true
                             text: qsTr("调度冲突")
-                            color: "#FFB09B"
+                            color: Theme.error
                             font.pixelSize: 13
                             font.weight: Font.DemiBold
                         }
                         Text {
                             text: qsTr("%1 个任务无法完整排入").arg(ScheduleService.unscheduledCount)
-                            color: "#8C96AA"
+                            color: Theme.secondaryText
                             font.pixelSize: 12
                         }
                     }
@@ -439,7 +482,7 @@ Item {
                                 .arg(first.reason || qsTr("容量不足"))
                                 .arg(first.remainingMinutes || 0)
                         }
-                        color: "#C8D0DE"
+                        color: Theme.primaryText
                         font.pixelSize: 12
                         elide: Text.ElideRight
                     }
@@ -449,14 +492,14 @@ Item {
                     Layout.preferredWidth: 112
                     Layout.preferredHeight: 36
                     radius: 8
-                    color: issueMouse.containsMouse ? "#202638" : "#11151D"
+                    color: issueMouse.containsMouse ? Theme.surfaceHover : Theme.canvasBackground
                     border.width: 1
-                    border.color: "#30384C"
+                    border.color: Theme.border
 
                     Text {
                         anchors.centerIn: parent
                         text: qsTr("重新规划")
-                        color: "#E6EAF2"
+                        color: Theme.primaryText
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
                     }
@@ -483,17 +526,17 @@ Item {
 
             radius: 14
 
-            color: "#1A1F2B"
+            color: Theme.surfaceElevated
 
             border.width: 1
-            border.color: "#6C63FF"
+            border.color: Theme.accent
 
             RowLayout {
                 anchors.fill: parent
                 anchors.margins: 16
 
                 Text {
-                    text: "馃"
+                    text: "🤖"
                     font.pixelSize: 28
                 }
 
@@ -502,13 +545,13 @@ Item {
 
                     Text {
                         text: "AI 推荐"
-                        color: "#FFFFFF"
+                        color: Theme.strongText
                         font.bold: true
                     }
 
                     Text {
                         text: "14:00 - 15:30 适合高认知学习"
-                        color: "#A6B0C3"
+                        color: Theme.secondaryText
                         font.pixelSize: 12
                     }
                 }
@@ -539,8 +582,8 @@ Item {
                 aiDraftDurationText.text = "60"
                 aiDraftCategory.text = ""
                 aiDraftNotes.text = ""
-                aiDraftReason.text = qsTr("DeepSeek 正在理解你的时间意图...")
-                aiDraftSource.text = qsTr("DeepSeek 正在规划")
+                aiDraftReason.text = qsTr("Chrona AI 正在理解你的时间意图...")
+                aiDraftSource.text = qsTr("Chrona AI 正在规划")
                 aiDraftPopup.open()
                 ScheduleService.requestTaskDraft(text)
             }
@@ -553,9 +596,9 @@ Item {
             onAiConfigRequested: {
                 deepSeekApiKeyField.text = ""
                 aiConfigStatus.text = ScheduleService.aiStatus.configured
-                    ? qsTr("DeepSeek 当前已连接。留空保存可切回本地规则模式。")
-                    : qsTr("填入 DeepSeek API Key 后，Quick Add 会优先使用 AI 解析。")
-                aiConfigStatus.color = "#9AA4B2"
+                    ? qsTr("Chrona AI 当前已连接。留空保存可切回本地规则模式。")
+                    : qsTr("填入 Chrona AI Key 后，Quick Add 会优先使用 AI 解析。")
+                aiConfigStatus.color = Theme.secondaryText
                 aiConfigPopup.open()
             }
         }
@@ -569,6 +612,11 @@ Item {
             requestedDayColumnWidth: root.timelineColumnWidth
             anchorDate: ScheduleService.selectedDateText
             readOnly: root.historicalView
+            onMoveRejected: function(message) {
+                quickAddToast.kind = "danger"
+                quickAddToast.text = message
+                quickAddToast.open()
+            }
         }
 
         Rectangle {
@@ -576,9 +624,9 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 46
             radius: 10
-            color: "#171D2A"
+            color: Theme.surfaceElevated
             border.width: 1
-            border.color: "#35405A"
+            border.color: Theme.border
 
             RowLayout {
                 anchors.fill: parent
@@ -589,7 +637,7 @@ Item {
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("正在查看 %1 的日程，浏览模式不会改动排程").arg(ScheduleService.selectedDateText)
-                    color: "#AAB6CC"
+                    color: Theme.secondaryText
                     font.pixelSize: 12
                 }
 
@@ -597,7 +645,7 @@ Item {
                     Layout.preferredWidth: 88
                     Layout.preferredHeight: 30
                     radius: 8
-                    color: returnTodayMouse.containsMouse ? "#8B99FF" : "#6C63FF"
+                    color: returnTodayMouse.containsMouse ? Theme.accentBright : Theme.accent
                     Text { anchors.centerIn: parent; text: qsTr("回到今天"); color: "white"; font.pixelSize: 12; font.weight: Font.DemiBold }
                     MouseArea {
                         id: returnTodayMouse
@@ -628,113 +676,310 @@ Item {
 
         Rectangle {
             anchors.fill: parent
-            color: "#080A0F"
+            color: Theme.appBackground
         }
 
         Item {
-            id: breathAnchor
-            anchors.centerIn: parent
-            width: Math.min(520, parent.width * 0.55)
-            height: width
+            id: ambientField
+            anchors.fill: parent
 
             Rectangle {
-                id: breathInner
-                anchors.centerIn: parent
-                width: parent.width * 0.72
-                height: parent.width * 0.72
-                radius: height * 0.5
-                color: "#FFFFFF"
-                opacity: 0.06
-                transformOrigin: Item.Center
-
-                SequentialAnimation {
-                    running: root.focusActive
-                    loops: Animation.Infinite
-                    NumberAnimation { target: breathInner; property: "opacity"; to: 0.18; duration: 3200; easing.type: Easing.InOutSine }
-                    NumberAnimation { target: breathInner; property: "opacity"; to: 0.04; duration: 3200; easing.type: Easing.InOutSine }
-                }
+                id: ambientGlowA
+                width: Math.min(620, parent.width * 0.5)
+                height: width
+                radius: width / 2
+                x: parent.width * 0.18
+                y: parent.height * 0.18
+                color: ScheduleService.focusItem.color || Theme.accentBright
+                opacity: 0.16
+                scale: 1.0
 
                 SequentialAnimation on scale {
                     running: root.focusActive
                     loops: Animation.Infinite
-                    NumberAnimation { to: 1.05; duration: 3200; easing.type: Easing.InOutSine }
-                    NumberAnimation { to: 0.96; duration: 3200; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 1.08; duration: 4200; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 0.96; duration: 4200; easing.type: Easing.InOutSine }
+                }
+            }
+
+            Rectangle {
+                id: ambientGlowB
+                width: Math.min(460, parent.width * 0.36)
+                height: width
+                radius: width / 2
+                x: parent.width * 0.58
+                y: parent.height * 0.55
+                color: "#65D6A6"
+                opacity: 0.10
+                scale: 1.0
+                SequentialAnimation on scale {
+                    running: root.focusActive
+                    loops: Animation.Infinite
+                    NumberAnimation { to: 0.94; duration: 5200; easing.type: Easing.InOutSine }
+                    NumberAnimation { to: 1.07; duration: 5200; easing.type: Easing.InOutSine }
                 }
             }
         }
 
-        ColumnLayout {
-            id: focusContent
+        Rectangle {
+            id: focusGlass
             z: 1
             anchors.centerIn: parent
             width: Math.min(640, parent.width - 80)
-            spacing: 28
+            height: Math.min(500, parent.height - 96)
+            radius: 34
+            color: Theme.glassSurface
+            border.width: 1
+            border.color: Theme.glassBorder
+            clip: true
 
-            Text {
-                Layout.alignment: Qt.AlignHCenter
-                text: qsTr("沉浸专注")
-                color: "#687389"
-                font.pixelSize: 13
-                font.weight: Font.DemiBold
-                font.letterSpacing: 2
-            }
+            Behavior on scale { NumberAnimation { duration: 260; easing.type: Easing.OutCubic } }
 
-            Text {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignHCenter
-                horizontalAlignment: Text.AlignHCenter
-                text: ScheduleService.focusItem.title || qsTr("当前任务")
-                color: "#E6EAF2"
-                font.pixelSize: 34
-                font.weight: Font.DemiBold
-                wrapMode: Text.WordWrap
-                maximumLineCount: 2
-                elide: Text.ElideRight
-            }
-
-            Text {
-                id: focusTimerText
-                Layout.alignment: Qt.AlignHCenter
-                text: root.formatFocusTime(root.focusRemainingSeconds)
-                color: "#FFFFFF"
-                font.pixelSize: 120
-                font.weight: Font.Light
-                font.family: "Consolas"
-                font.letterSpacing: 2
+            gradient: Gradient {
+                GradientStop { position: 0.0; color: Theme.dark ? "#2A20283A" : "#B8FFFFFF" }
+                GradientStop { position: 0.48; color: Theme.dark ? "#1A111722" : "#96F8FAFD" }
+                GradientStop { position: 1.0; color: Theme.dark ? "#30101622" : "#AAE7EDF5" }
             }
 
             Rectangle {
-                Layout.fillWidth: true
-                Layout.preferredHeight: 4
-                radius: 2
-                color: "#2A2A2A"
-                clip: true
+                anchors.fill: parent
+                radius: parent.radius
+                color: "transparent"
+                border.width: 1
+                border.color: Theme.glassBorder
+                opacity: 0.75
+            }
 
-                Rectangle {
-                    height: parent.height
-                    width: parent.width * (1 - root.focusRemainingSeconds / root.focusDurationSeconds)
-                    radius: 2
-                    color: "#FFFFFF"
-                    opacity: 0.9
-                    Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+            Rectangle {
+                id: glassSheen
+                width: parent.width * 0.35
+                height: parent.height * 1.5
+                x: -width
+                y: -parent.height * 0.2
+                rotation: -18
+                opacity: 0.18
+                gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: "#00FFFFFF" }
+                    GradientStop { position: 0.5; color: Theme.glassHighlight }
+                    GradientStop { position: 1.0; color: "#00FFFFFF" }
+                }
+
+                SequentialAnimation on x {
+                    running: root.focusActive
+                    loops: Animation.Infinite
+                    PauseAnimation { duration: 1800 }
+                    NumberAnimation { to: focusGlass.width + glassSheen.width; duration: 2600; easing.type: Easing.InOutCubic }
+                    PropertyAction { value: -glassSheen.width }
                 }
             }
 
-            Text {
-                Layout.fillWidth: true
-                Layout.alignment: Qt.AlignHCenter
-                horizontalAlignment: Text.AlignHCenter
-                text: qsTr("保持当前节奏，完成这一段时间块。")
-                color: "#9AA4B2"
-                font.pixelSize: 14
+            ColumnLayout {
+                id: focusContent
+                anchors.fill: parent
+                anchors.margins: 30
+                spacing: 15
+
+                RowLayout {
+                    Layout.fillWidth: true
+
+                    ColumnLayout {
+                        Layout.fillWidth: true
+                        spacing: 4
+
+                        Text {
+                            text: qsTr("FOCUS SESSION")
+                            color: Theme.tertiaryText
+                            font.pixelSize: 11
+                            font.weight: Font.DemiBold
+                            font.letterSpacing: 2
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: ScheduleService.focusItem.title || qsTr("当前任务")
+                            color: Theme.primaryText
+                            font.pixelSize: 30
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+                    }
+
+                    Rectangle {
+                        Layout.preferredWidth: 112
+                        Layout.preferredHeight: 34
+                        radius: 17
+                        color: Theme.surfaceMuted
+                        border.width: 1
+                        border.color: Theme.border
+
+                        Text {
+                            anchors.centerIn: parent
+                            text: qsTr("沉浸专注")
+                            color: Theme.accentBright
+                            font.pixelSize: 12
+                            font.weight: Font.DemiBold
+                        }
+                    }
+                }
+
+                Item {
+                    Layout.alignment: Qt.AlignHCenter
+                    Layout.preferredWidth: Math.min(300, focusGlass.width - 96)
+                    Layout.preferredHeight: Layout.preferredWidth
+
+                    readonly property real progress: root.focusDurationSeconds > 0
+                                                     ? Math.max(0, Math.min(1, 1 - root.focusRemainingSeconds / root.focusDurationSeconds))
+                                                     : 0
+
+                    Canvas {
+                        id: focusRing
+                        anchors.fill: parent
+                        antialiasing: true
+                        onPaint: {
+                            var ctx = getContext("2d")
+                            ctx.reset()
+                            var cx = width / 2
+                            var cy = height / 2
+                            var radius = Math.min(width, height) / 2 - 13
+                            ctx.lineCap = "round"
+                            ctx.lineWidth = 10
+                            ctx.strokeStyle = "rgba(255,255,255,0.08)"
+                            ctx.beginPath()
+                            ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+                            ctx.stroke()
+
+                            var accent = ScheduleService.focusItem.color || Theme.accentBright
+                            ctx.strokeStyle = accent
+                            ctx.shadowBlur = 18
+                            ctx.shadowColor = accent
+                            ctx.beginPath()
+                            ctx.arc(cx, cy, radius, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * parent.progress)
+                            ctx.stroke()
+                        }
+                    }
+
+                    Connections {
+                        target: root
+                        function onFocusRemainingSecondsChanged() { focusRing.requestPaint() }
+                    }
+
+                    Rectangle {
+                        anchors.centerIn: parent
+                        width: parent.width * 0.74
+                        height: width
+                        radius: width / 2
+                        color: Theme.glassSurface
+                        border.width: 1
+                        border.color: Theme.glassBorder
+                    }
+
+                    Column {
+                        anchors.centerIn: parent
+                        spacing: 6
+
+                        Text {
+                            id: focusTimerText
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: root.formatFocusTime(root.focusRemainingSeconds)
+                            color: Theme.strongText
+                            font.pixelSize: 64
+                            font.weight: Font.Light
+                            font.family: "Consolas"
+                            font.letterSpacing: 1
+                        }
+
+                        Text {
+                            anchors.horizontalCenter: parent.horizontalCenter
+                            text: ScheduleService.focusItem.subtitle || qsTr("保持当前节奏")
+                            color: Theme.secondaryText
+                            font.pixelSize: 13
+                            elide: Text.ElideRight
+                            width: Math.min(300, focusGlass.width - 120)
+                            horizontalAlignment: Text.AlignHCenter
+                        }
+                    }
+                }
+
+                Rectangle {
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: 6
+                    radius: 3
+                    color: Theme.border
+                    opacity: 0.9
+                    clip: true
+
+                    Rectangle {
+                        height: parent.height
+                        width: parent.width * (root.focusDurationSeconds > 0
+                                               ? Math.max(0, Math.min(1, 1 - root.focusRemainingSeconds / root.focusDurationSeconds))
+                                               : 0)
+                        radius: 3
+                        color: ScheduleService.focusItem.color || Theme.accentBright
+                        Behavior on width { NumberAnimation { duration: 280; easing.type: Easing.OutCubic } }
+                    }
+                }
+
+                Text {
+                    Layout.fillWidth: true
+                    horizontalAlignment: Text.AlignHCenter
+                    text: qsTr("把注意力留在这一段，Chrona 会替你照看剩下的时间线。")
+                    color: Theme.secondaryText
+                    font.pixelSize: 13
+                    wrapMode: Text.WordWrap
+                }
+
+                RowLayout {
+                    Layout.alignment: Qt.AlignHCenter
+                    spacing: 12
+
+                    FocusButton { text: qsTr("退出专注"); muted: true; onClicked: root.requestEndFocus() }
+                    FocusButton {
+                        text: root.focusCanComplete ? qsTr("完成") : qsTr("时间未结束")
+                        enabled: root.focusCanComplete
+                        opacity: enabled ? 1 : 0.46
+                        onClicked: root.endFocus(true)
+                    }
+                }
             }
 
-            RowLayout {
-                Layout.alignment: Qt.AlignHCenter
-                spacing: 12
+            Rectangle {
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.bottom: parent.bottom
+                anchors.leftMargin: 40
+                anchors.rightMargin: 40
+                anchors.bottomMargin: 28
+                height: 1
+                color: "#55FFFFFF"
+                opacity: 0.22
+            }
+        }
 
-                FocusButton { text: qsTr("退出专注"); muted: true; onClicked: root.requestEndFocus() }
-                FocusButton { text: qsTr("完成"); onClicked: root.endFocus(true) }
+        Rectangle {
+            anchors.centerIn: focusGlass
+            width: focusGlass.width + 24
+            height: focusGlass.height + 24
+            radius: focusGlass.radius + 12
+            color: "transparent"
+            border.width: 1
+            border.color: ScheduleService.focusItem.color || Theme.accentBright
+            opacity: 0.18
+            z: 0
+            scale: 1.0
+
+            SequentialAnimation on scale {
+                running: root.focusActive
+                loops: Animation.Infinite
+                NumberAnimation { to: 1.025; duration: 3000; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 1.0; duration: 3000; easing.type: Easing.InOutSine }
+            }
+
+            SequentialAnimation on opacity {
+                running: root.focusActive
+                loops: Animation.Infinite
+                NumberAnimation { to: 0.30; duration: 3000; easing.type: Easing.InOutSine }
+                NumberAnimation { to: 0.14; duration: 3000; easing.type: Easing.InOutSine }
             }
         }
     }
@@ -765,7 +1010,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("退出专注？")
-                color: "#E6EAF2"
+                color: Theme.primaryText
                 font.pixelSize: 20
                 font.weight: Font.DemiBold
             }
@@ -773,7 +1018,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("当前专注尚未完成，确定要退出吗？进度将不会保存。")
-                color: "#9AA4B2"
+                color: Theme.secondaryText
                 font.pixelSize: 14
                 wrapMode: Text.WordWrap
                 lineHeight: 1.35
@@ -802,15 +1047,15 @@ Item {
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         background: Rectangle {
             radius: 8
-            color: quickAddToast.kind === "danger" ? "#2A1D1B" : "#16251F"
+            color: quickAddToast.kind === "danger" ? Theme.dangerSurface : Theme.successSurface
             border.width: 1
-            border.color: quickAddToast.kind === "danger" ? "#FF7A59" : "#4FAE85"
+            border.color: quickAddToast.kind === "danger" ? Theme.dangerBorder : Theme.successBorder
         }
         Text {
             id: toastText
             anchors.centerIn: parent
             width: parent.width - 28
-            color: quickAddToast.kind === "danger" ? "#FFB09B" : "#A9F0C9"
+            color: quickAddToast.kind === "danger" ? Theme.error : Theme.success
             font.pixelSize: 13
             elide: Text.ElideRight
         }
@@ -818,13 +1063,22 @@ Item {
 
     Popup {
         id: aiDraftPopup
+        property point dragOffset: Qt.point(0, 0)
+        property bool dragging: false
         width: 560
         height: 540
         modal: true
         focus: true
-        anchors.centerIn: parent
+        x: Math.round(((parent ? parent.width : root.width) - width) / 2)
+        y: Math.round(((parent ? parent.height : root.height) - height) / 2)
+        onOpened: {
+            x = Math.round(((parent ? parent.width : root.width) - width) / 2)
+            y = Math.round(((parent ? parent.height : root.height) - height) / 2)
+        }
         closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
         padding: 0
+        scale: dragging ? 1.012 : 1.0
+        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
         enter: Transition {
             NumberAnimation { property: "opacity"; from: 0; to: 1; duration: 180; easing.type: Easing.OutCubic }
             NumberAnimation { property: "scale"; from: 0.975; to: 1; duration: 220; easing.type: Easing.OutCubic }
@@ -837,10 +1091,11 @@ Item {
             id: aiGlass
             property real breath: 0
             radius: 18
-            color: "#E61A2030"
+            color: Theme.glassSurface
             border.width: 1
-            border.color: "#56627F"
+            border.color: aiDraftPopup.dragging ? Theme.accentBright : Theme.infoBorder
             clip: true
+            Behavior on border.color { ColorAnimation { duration: 160 } }
 
             SequentialAnimation on breath {
                 loops: Animation.Infinite
@@ -854,7 +1109,7 @@ Item {
                 width: 230
                 height: 230
                 radius: 115
-                color: "#7C8CFF"
+                color: Theme.accentBright
                 opacity: 0.11 + aiGlass.breath * 0.08
                 scale: 1 + aiGlass.breath * 0.035
             }
@@ -864,7 +1119,7 @@ Item {
                 anchors.right: parent.right
                 anchors.top: parent.top
                 height: 1
-                color: "#AFC5FF"
+                color: Theme.dark ? "#AFC5FF" : "#405AA8"
                 opacity: 0.34 + aiGlass.breath * 0.24
             }
 
@@ -872,11 +1127,12 @@ Item {
                 anchors.fill: parent
                 anchors.margins: 1
                 radius: 17
-                color: "#8811151D"
+                color: Theme.glassSurface
             }
         }
 
         ColumnLayout {
+            z: 2
             anchors.fill: parent
             anchors.margins: 26
             spacing: 14
@@ -890,16 +1146,16 @@ Item {
                     Layout.preferredWidth: 42
                     Layout.preferredHeight: 42
                     radius: 21
-                    color: "#222A44"
+                    color: Theme.infoSurface
                     border.width: 1
-                    border.color: "#7C8CFF"
+                    border.color: Theme.accentBright
                     opacity: 0.92
                     scale: 1 + aiGlass.breath * 0.035
 
                     Text {
                         anchors.centerIn: parent
                         text: "AI"
-                        color: "#B9C3FF"
+                        color: Theme.accentBright
                         font.pixelSize: 13
                         font.weight: Font.Black
                     }
@@ -911,15 +1167,15 @@ Item {
                     Text {
                         id: aiDraftSource
                         Layout.fillWidth: true
-                        text: qsTr("DeepSeek 规划草稿")
-                        color: "#F3F6FF"
+                        text: qsTr("Chrona AI 规划草稿")
+                        color: Theme.accentText
                         font.pixelSize: 21
                         font.weight: Font.DemiBold
                     }
                     Text {
                         Layout.fillWidth: true
                         text: qsTr("AI 已理解意图，确认后才写入数据库")
-                        color: "#9EA9BE"
+                        color: Theme.secondaryText
                         font.pixelSize: 12
                     }
                 }
@@ -928,14 +1184,14 @@ Item {
                     Layout.preferredWidth: 88
                     Layout.preferredHeight: 30
                     radius: 15
-                    color: "#182033"
+                    color: Theme.surfaceMuted
                     border.width: 1
-                    border.color: "#33405C"
+                    border.color: Theme.border
 
                     Text {
                         anchors.centerIn: parent
                         text: root.aiDraft.planningMode === "direct_time_block" ? qsTr("时间块") : qsTr("任务")
-                        color: "#A9F0C9"
+                        color: Theme.success
                         font.pixelSize: 12
                         font.weight: Font.DemiBold
                     }
@@ -945,12 +1201,12 @@ Item {
             Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 1
-                color: "#2A3142"
+                color: Theme.border
                 opacity: 0.8
             }
 
-            TextField { id: aiDraftTitle; Layout.fillWidth: true; placeholderText: qsTr("任务标题"); color: "#E6EAF2"; background: PopupFieldBackground {} }
-            TextField { id: aiDraftDeadline; Layout.fillWidth: true; placeholderText: "yyyy-MM-dd HH:mm"; color: "#E6EAF2"; background: PopupFieldBackground {} }
+            TextField { id: aiDraftTitle; Layout.fillWidth: true; placeholderText: qsTr("任务标题"); color: Theme.primaryText; background: PopupFieldBackground {} }
+            TextField { id: aiDraftDeadline; Layout.fillWidth: true; placeholderText: "yyyy-MM-dd HH:mm"; color: Theme.primaryText; background: PopupFieldBackground {} }
 
             RowLayout {
                 Layout.fillWidth: true
@@ -958,7 +1214,7 @@ Item {
                     id: aiDraftDurationText
                     Layout.fillWidth: true
                     text: "60"
-                    color: "#E6EAF2"
+                    color: Theme.primaryText
                     placeholderText: qsTr("分钟")
                     validator: IntValidator { bottom: 30; top: 720 }
                     background: PopupFieldBackground {}
@@ -968,7 +1224,7 @@ Item {
                         anchors.rightMargin: 14
                         anchors.verticalCenter: parent.verticalCenter
                         text: qsTr("分钟")
-                        color: "#7F8AA2"
+                        color: Theme.tertiaryText
                         font.pixelSize: 12
                     }
                 }
@@ -979,12 +1235,12 @@ Item {
                 }
             }
 
-            TextField { id: aiDraftCategory; Layout.fillWidth: true; placeholderText: qsTr("课程分类"); color: "#E6EAF2"; background: PopupFieldBackground {} }
+            TextField { id: aiDraftCategory; Layout.fillWidth: true; placeholderText: qsTr("课程分类"); color: Theme.primaryText; background: PopupFieldBackground {} }
             TextArea {
                 id: aiDraftNotes
                 Layout.fillWidth: true
                 Layout.preferredHeight: 74
-                color: "#E6EAF2"
+                color: Theme.primaryText
                 wrapMode: TextEdit.WordWrap
                 placeholderText: ""
                 background: PopupFieldBackground {}
@@ -995,7 +1251,7 @@ Item {
                     anchors.leftMargin: 14
                     anchors.topMargin: 10
                     text: qsTr("备注")
-                    color: "#667289"
+                    color: Theme.mutedText
                     font.pixelSize: 12
                     visible: aiDraftNotes.text.length === 0
                     z: 2
@@ -1005,15 +1261,15 @@ Item {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 76
                 radius: 12
-                color: "#80101520"
+                color: Theme.glassSurface
                 border.width: 1
-                border.color: "#253047"
+                border.color: Theme.border
 
                 Text {
                     id: aiDraftReason
                     anchors.fill: parent
                     anchors.margins: 14
-                    color: "#AAB6CC"
+                    color: Theme.secondaryText
                     font.pixelSize: 12
                     lineHeight: 1.22
                     wrapMode: Text.WordWrap
@@ -1026,8 +1282,8 @@ Item {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("DeepSeek 只生成草稿，不直接改数据库")
-                    color: "#6F7A91"
+                    text: qsTr("Chrona AI 只生成草稿，不直接改数据库")
+                    color: Theme.tertiaryText
                     font.pixelSize: 11
                 }
                 FocusButton { text: qsTr("取消"); muted: true; onClicked: aiDraftPopup.close() }
@@ -1038,7 +1294,7 @@ Item {
         Rectangle {
             anchors.fill: parent
             radius: 18
-            color: "#B6121620"
+            color: Theme.glassSurface
             visible: root.aiDraftLoading
             opacity: root.aiDraftLoading ? 1 : 0
             z: 20
@@ -1060,14 +1316,14 @@ Item {
                         radius: 24
                         color: "transparent"
                         border.width: 2
-                        border.color: "#34405C"
+                        border.color: Theme.border
                     }
 
                     Rectangle {
                         width: 10
                         height: 10
                         radius: 5
-                        color: "#7C8CFF"
+                        color: Theme.accentBright
                         x: 19
                         y: -1
                     }
@@ -1084,8 +1340,8 @@ Item {
 
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
-                    text: qsTr("DeepSeek 正在整理时间意图")
-                    color: "#E6EAF2"
+                    text: qsTr("Chrona AI 正在整理时间意图")
+                    color: Theme.primaryText
                     font.pixelSize: 14
                     font.weight: Font.DemiBold
                 }
@@ -1095,10 +1351,34 @@ Item {
                     anchors.horizontalCenter: parent.horizontalCenter
                     horizontalAlignment: Text.AlignHCenter
                     text: qsTr("会先生成草稿，确认后才写入数据库")
-                    color: "#8F9AB0"
+                    color: Theme.tertiaryText
                     font.pixelSize: 12
                     wrapMode: Text.WordWrap
                 }
+            }
+        }
+
+        MouseArea {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 76
+            z: 4
+            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+            onPressed: {
+                aiDraftPopup.dragging = true
+                aiDraftPopup.dragOffset = Qt.point(mouse.x, mouse.y)
+            }
+            onReleased: aiDraftPopup.dragging = false
+            onCanceled: aiDraftPopup.dragging = false
+            onPositionChanged: {
+                if (!pressed) {
+                    return
+                }
+                var maxX = (aiDraftPopup.parent ? aiDraftPopup.parent.width : root.width) - aiDraftPopup.width - 12
+                var maxY = (aiDraftPopup.parent ? aiDraftPopup.parent.height : root.height) - aiDraftPopup.height - 12
+                aiDraftPopup.x = Math.max(12, Math.min(maxX, aiDraftPopup.x + mouse.x - aiDraftPopup.dragOffset.x))
+                aiDraftPopup.y = Math.max(12, Math.min(maxY, aiDraftPopup.y + mouse.y - aiDraftPopup.dragOffset.y))
             }
         }
     }
@@ -1121,7 +1401,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("AI 接入设置")
-                color: "#E6EAF2"
+                color: Theme.primaryText
                 font.pixelSize: 20
                 font.weight: Font.DemiBold
             }
@@ -1129,7 +1409,7 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: qsTr("Chrona 只让 AI 解析任务草稿。保存并确认后，任务才会写入数据库并进入 Scheduler。")
-                color: "#9AA4B2"
+                color: Theme.secondaryText
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
                 lineHeight: 1.35
@@ -1138,17 +1418,17 @@ Item {
             TextField {
                 id: deepSeekApiKeyField
                 Layout.fillWidth: true
-                placeholderText: qsTr("DeepSeek API Key")
+                placeholderText: qsTr("Chrona AI Key")
                 echoMode: TextInput.Password
-                color: "#E6EAF2"
-                placeholderTextColor: "#667187"
+                color: Theme.primaryText
+                placeholderTextColor: Theme.mutedText
                 background: PopupFieldBackground {}
             }
 
             Text {
                 id: aiConfigStatus
                 Layout.fillWidth: true
-                color: "#9AA4B2"
+                color: Theme.secondaryText
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
             }
@@ -1162,7 +1442,7 @@ Item {
                     text: qsTr("保存")
                     onClicked: {
                         var result = ScheduleService.setDeepSeekApiKey(deepSeekApiKeyField.text)
-                        aiConfigStatus.color = result.ok ? "#A9F0C9" : "#FFB09B"
+                        aiConfigStatus.color = result.ok ? Theme.success : Theme.error
                         aiConfigStatus.text = result.message || ""
                         if (result.ok) {
                             quickAddToast.kind = "success"
@@ -1190,9 +1470,9 @@ Item {
             anchors.fill: parent
             anchors.margins: 20
             spacing: 14
-            Text { text: qsTr("OCR 识别结果"); color: "#E6EAF2"; font.pixelSize: 20; font.weight: Font.DemiBold }
-            Text { id: ocrMessage; Layout.fillWidth: true; color: "#9AA4B2"; font.pixelSize: 13; wrapMode: Text.WordWrap }
-            TextArea { id: ocrText; Layout.fillWidth: true; Layout.fillHeight: true; color: "#E6EAF2"; font.pixelSize: 14; wrapMode: TextEdit.WordWrap; background: PopupFieldBackground {} }
+            Text { text: qsTr("OCR 识别结果"); color: Theme.primaryText; font.pixelSize: 20; font.weight: Font.DemiBold }
+            Text { id: ocrMessage; Layout.fillWidth: true; color: Theme.secondaryText; font.pixelSize: 13; wrapMode: Text.WordWrap }
+            TextArea { id: ocrText; Layout.fillWidth: true; Layout.fillHeight: true; color: Theme.primaryText; font.pixelSize: 14; wrapMode: TextEdit.WordWrap; background: PopupFieldBackground {} }
             RowLayout {
                 Layout.fillWidth: true
                 Item { Layout.fillWidth: true }
@@ -1212,7 +1492,7 @@ Item {
                             aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
                             aiDraftNotes.text = root.aiDraft.notes || ""
                             aiDraftReason.text = root.aiDraft.explanation || result.message || ""
-                            aiDraftSource.text = (result.source === "deepseek") ? qsTr("DeepSeek 规划草稿") : qsTr("本地规则草稿")
+                            aiDraftSource.text = (result.source === "deepseek") ? qsTr("Chrona AI 规划草稿") : qsTr("本地规则草稿")
                             aiDraftPopup.open()
                         }
                     }
@@ -1234,33 +1514,33 @@ Item {
         Layout.preferredWidth: preferredWidth
         Layout.preferredHeight: 38
         radius: 8
-        color: "#161A23"
+        color: Theme.surface
         border.width: 1
-        border.color: "#2A3142"
+        border.color: Theme.border
 
         RowLayout {
             anchors.fill: parent
             anchors.leftMargin: 10
             anchors.rightMargin: 10
             spacing: 8
-            Text { text: density.label; color: "#9AA4B2"; font.pixelSize: 12; font.weight: Font.DemiBold }
+            Text { text: density.label; color: Theme.secondaryText; font.pixelSize: 12; font.weight: Font.DemiBold }
             Slider { Layout.fillWidth: true; from: density.from; to: density.to; value: density.value; live: true; onMoved: density.valueChangedByUser(value) }
-            Text { text: density.valueLabel; color: "#E6EAF2"; font.pixelSize: 12; font.weight: Font.DemiBold }
+            Text { text: density.valueLabel; color: Theme.primaryText; font.pixelSize: 12; font.weight: Font.DemiBold }
         }
     }
 
     component PopupBackground: Rectangle {
         radius: 10
-        color: "#161A23"
+        color: Theme.surface
         border.width: 1
-        border.color: "#30384C"
+        border.color: Theme.border
     }
 
     component PopupFieldBackground: Rectangle {
         radius: 10
-        color: "#9A10151D"
+        color: Theme.glassSurface
         border.width: 1
-        border.color: "#2F3A52"
+        border.color: Theme.border
     }
 
     component DarkPills: Rectangle {
@@ -1270,9 +1550,9 @@ Item {
 
         Layout.preferredHeight: 42
         radius: 8
-        color: "#10141C"
+        color: Theme.surface
         border.width: 1
-        border.color: "#252B3A"
+        border.color: Theme.surfaceHover
 
         RowLayout {
             anchors.fill: parent
@@ -1285,14 +1565,14 @@ Item {
                     Layout.fillWidth: true
                     Layout.fillHeight: true
                     radius: 7
-                    color: pills.currentIndex === index ? "#252D44" : "transparent"
+                    color: pills.currentIndex === index ? Theme.surfaceSelected : "transparent"
                     border.width: pills.currentIndex === index ? 1 : 0
-                    border.color: "#7C8CFF"
+                    border.color: Theme.accentBright
 
                     Text {
                         anchors.centerIn: parent
                         text: modelData
-                        color: pills.currentIndex === index ? "#E6EAF2" : "#8D98AB"
+                        color: pills.currentIndex === index ? Theme.primaryText : Theme.tertiaryText
                         font.pixelSize: 11
                         font.weight: Font.DemiBold
                     }
@@ -1314,9 +1594,9 @@ Item {
 
         Layout.preferredHeight: 42
         radius: 10
-        color: mouse.containsMouse ? "#1A2030" : "#151A23"
+        color: mouse.containsMouse ? Theme.surfaceHover : Theme.surfaceMuted
         border.width: 1
-        border.color: mouse.containsMouse ? "#53607C" : "#2C3548"
+        border.color: mouse.containsMouse ? Theme.infoBorder : Theme.borderSoft
         Behavior on color { ColorAnimation { duration: 140 } }
         Behavior on border.color { ColorAnimation { duration: 140 } }
 
@@ -1329,14 +1609,14 @@ Item {
             Text {
                 Layout.fillWidth: true
                 text: timeButton.value
-                color: "#E6EAF2"
+                color: Theme.primaryText
                 font.pixelSize: 15
                 font.weight: Font.DemiBold
             }
 
             Text {
                 text: "v"
-                color: "#7C8CFF"
+                color: Theme.accentBright
                 font.pixelSize: 16
                 font.weight: Font.DemiBold
             }
@@ -1355,16 +1635,17 @@ Item {
         id: button
         property alias text: label.text
         property bool muted: false
+        property bool enabled: true
         signal clicked()
 
-        width: label.text.length > 4 ? 96 : 76
+        width: label.text.length > 3 ? 104 : 76
         height: 38
         radius: 8
-        color: muted ? (mouse.containsMouse ? "#202638" : "#161A23") : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
+        color: !enabled ? Theme.controlDisabled : muted ? (mouse.containsMouse ? Theme.surfaceHover : Theme.surface) : (mouse.containsMouse ? Theme.accent : Theme.accentBright)
         border.width: muted ? 1 : 0
-        border.color: "#30384C"
+        border.color: Theme.border
         Behavior on color { ColorAnimation { duration: 140 } }
-        Text { id: label; anchors.centerIn: parent; color: muted ? "#AAB4C6" : "white"; font.pixelSize: 13; font.weight: Font.DemiBold }
-        MouseArea { id: mouse; anchors.fill: parent; hoverEnabled: true; onClicked: button.clicked() }
+        Text { id: label; anchors.centerIn: parent; color: !button.enabled ? Theme.mutedText : muted ? Theme.secondaryText : "white"; font.pixelSize: 13; font.weight: Font.DemiBold }
+        MouseArea { id: mouse; anchors.fill: parent; enabled: button.enabled; hoverEnabled: true; cursorShape: enabled ? Qt.PointingHandCursor : Qt.ArrowCursor; onClicked: button.clicked() }
     }
 }

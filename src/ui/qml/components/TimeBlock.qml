@@ -15,7 +15,7 @@ Rectangle {
     property int startMinute: 0
     property int durationMinutes: 0
     property int priority: 1
-    property color accentColor: "#6C63FF"
+    property color accentColor: Theme.accent
     property string kind: "task"
     property string source: "auto"
 
@@ -26,7 +26,6 @@ Rectangle {
     property bool canMove: true
     property bool canResize: true
     property bool canLock: true
-    readonly property bool lockActive: root.locked || root.eventLocked
 
     property bool selected: false
     property int blockOrdinal: 0
@@ -48,6 +47,7 @@ Rectangle {
     property bool readyForResizeAnimation: false
     property real resizeGlowOpacity: 0
     property real resizePressY: 0
+    property real resizePressSceneY: 0
     property int resizeStartDuration: 0
     property int resizePreviewDuration: 0
     property bool resizeActive: false
@@ -56,23 +56,37 @@ Rectangle {
     property int resizePreviewStartMinute: 0
     property bool spanResizeActive: false
     property real spanPressX: 0
+    property real spanPressSceneX: 0
     property int spanStartDays: 1
     property int spanPreviewDays: 1
     property real spanPreviewVisualDays: 1
+    property bool spanResizeFromLeft: false
+    property int spanFixedEndDayIndex: 0
+    property int spanPreviewStartDayIndex: dayIndex
+    property real spanPreviewVisualStartDayIndex: dayIndex
     property int pendingSpanEndDayIndex: -1
+    property int pendingSpanStartDayIndex: -1
     property real spanDrillGlow: 0
     readonly property bool compactBlock: root.height < 34
     readonly property bool tinyBlock: root.height < 24
+    readonly property bool handlesRevealed: root.selected || mouse.containsMouse
+        || root.resizeActive || root.spanResizeActive
+    readonly property bool highPriority: root.priority >= 2 && !root.completed
+    property real priorityPulse: 0.26
 
     signal moveRequested(int blockId, int dayIndex, int startMinute, int durationMinutes)
     signal resizeTimeRequested(int blockId, int startMinute, int durationMinutes)
     signal spanRequested(int blockId, int endDayIndex)
+    signal spanRangeRequested(int blockId, int startDayIndex, int endDayIndex)
     signal selectedItem(int taskId, int blockId)
 
     radius: 14
-    color: root.completed ? (selected ? "#3A3F4B" : "#262B35") : selected ? Qt.darker(accentColor, 1.35) : "#1A1F2B"
-    border.width: selected ? 2 : mouse.containsMouse ? 1 : 0
-    border.color: root.completed ? "#737B8C" : accentColor
+    color: root.completed
+        ? (selected ? Theme.blockCompletedSelected : Theme.blockCompleted)
+        : selected ? (Theme.dark ? Qt.darker(accentColor, 1.35) : Theme.blockSelected)
+                   : Theme.surfaceElevated
+    border.width: highPriority ? (selected ? 3 : 2) : selected ? 2 : mouse.containsMouse ? 1 : 0
+    border.color: root.completed ? Theme.blockCompletedAccent : highPriority ? Theme.highPriority : accentColor
     opacity: mouse.drag.active ? 0.9 : root.completed ? 0.72 : 1
     z: root.resizeActive || root.spanResizeActive ? 12 : mouse.drag.active ? 10 : selected ? 4 : 1
     scale: mouse.containsMouse ? 1.02 : 1
@@ -85,13 +99,31 @@ Rectangle {
     Behavior on opacity { NumberAnimation { duration: 130 } }
     Behavior on color { ColorAnimation { duration: 160 } }
 
+    SequentialAnimation on priorityPulse {
+        running: root.highPriority
+        loops: Animation.Infinite
+        NumberAnimation { from: 0.18; to: 0.42; duration: 920; easing.type: Easing.InOutSine }
+        NumberAnimation { from: 0.42; to: 0.18; duration: 920; easing.type: Easing.InOutSine }
+    }
+
+    Rectangle {
+        visible: root.highPriority
+        anchors.fill: parent
+        anchors.margins: 3
+        radius: Math.max(2, root.radius - 3)
+        color: "transparent"
+        border.width: 2
+        border.color: Theme.highPriority
+        opacity: root.priorityPulse
+    }
+
     Rectangle {
         anchors.left: parent.left
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 6
         radius: 3
-        color: root.completed ? "#8A92A3" : root.accentColor
+        color: root.completed ? Theme.blockCompletedAccent : root.accentColor
     }
 
     Rectangle {
@@ -99,7 +131,7 @@ Rectangle {
         anchors.top: parent.top
         anchors.bottom: parent.bottom
         width: 12
-        color: root.completed ? "#8A92A3" : root.accentColor
+        color: root.completed ? Theme.blockCompletedAccent : root.accentColor
         opacity: root.completed ? (mouse.containsMouse ? 0.16 : 0.1) : mouse.containsMouse ? 0.18 : 0.08
     }
 
@@ -139,11 +171,13 @@ Rectangle {
         interval: 140
         repeat: false
         onTriggered: {
-            if (root.pendingSpanEndDayIndex >= 0) {
+            if (root.pendingSpanEndDayIndex >= 0 && root.pendingSpanStartDayIndex >= 0) {
+                var startDay = root.pendingSpanStartDayIndex
                 var endDay = root.pendingSpanEndDayIndex
+                root.pendingSpanStartDayIndex = -1
                 root.pendingSpanEndDayIndex = -1
                 root.spanResizeActive = false
-                root.spanRequested(root.blockId, endDay)
+                root.spanRangeRequested(root.blockId, startDay, endDay)
             }
         }
     }
@@ -157,49 +191,34 @@ Rectangle {
     }
 
     Item {
-        id: lockBadge
-        visible: root.lockActive || opacity > 0
+        visible: root.locked || root.eventLocked
         anchors.right: parent.right
         anchors.top: parent.top
-        anchors.rightMargin: 7
-        anchors.topMargin: 7
-        width: 20
-        height: 20
-        opacity: root.lockActive ? 1 : 0
-        scale: root.lockActive ? 1 : 0.72
-
-        Behavior on opacity { NumberAnimation { duration: 180; easing.type: Easing.OutCubic } }
-        Behavior on scale { NumberAnimation { duration: 220; easing.type: Easing.OutBack } }
+        anchors.rightMargin: root.compactBlock ? 12 : 18
+        anchors.topMargin: root.compactBlock ? 4 : 8
+        width: root.compactBlock ? 14 : 18
+        height: root.compactBlock ? 14 : 18
+        z: 15
 
         Rectangle {
-            anchors.fill: parent
-            radius: 7
-            color: "#2D3342"
-            border.width: 1
-            border.color: "#566176"
-        }
-
-        Rectangle {
-            x: 5
-            y: 4
-            width: 10
-            height: 8
-            radius: 5
+            x: parent.width * 0.25
+            y: 1
+            width: parent.width * 0.5
+            height: parent.height * 0.52
+            radius: width / 2
             color: "transparent"
             border.width: 2
-            border.color: "#E6EAF2"
-            transformOrigin: Item.BottomRight
-            rotation: root.lockActive ? 0 : -18
-            Behavior on rotation { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+            border.color: Theme.blockHandle
         }
 
         Rectangle {
-            x: 5
-            y: 10
-            width: 10
-            height: 7
-            radius: 2
-            color: "#E6EAF2"
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: parent.bottom
+            height: parent.height * 0.58
+            radius: 4
+            color: Theme.blockHandle
+            opacity: 0.92
         }
     }
 
@@ -216,7 +235,7 @@ Rectangle {
             width: parent.width
             height: root.height < 28 ? Math.max(12, parent.height) : implicitHeight
             text: root.title
-            color: root.completed ? "#B4BBC8" : "#FFFFFF"
+            color: root.completed ? Theme.secondaryText : Theme.strongText
             font.pixelSize: root.height < 28 ? 10 : root.height < 48 ? 12 : 14
             font.weight: Font.DemiBold
             elide: Text.ElideRight
@@ -227,7 +246,7 @@ Rectangle {
             visible: root.height >= 46
             width: parent.width
             text: root.timeRange + (root.blockTotal > 1 ? qsTr(" · %1/%2").arg(root.blockOrdinal).arg(root.blockTotal) : "")
-            color: root.completed ? "#9AA3B3" : "#CBD5E1"
+            color: root.completed ? Theme.tertiaryText : Theme.primaryText
             font.pixelSize: 11
             elide: Text.ElideRight
         }
@@ -236,7 +255,7 @@ Rectangle {
             visible: root.height >= 72
             width: parent.width
             text: root.explanation && root.explanation.length > 0 ? root.explanation : root.subtitle
-            color: root.completed ? "#80899A" : "#94A3B8"
+            color: root.completed ? Theme.mutedText : Theme.secondaryText
             font.pixelSize: 11
             elide: Text.ElideRight
         }
@@ -289,7 +308,7 @@ Rectangle {
 
     Rectangle {
         id: topResizeHandle
-        visible: root.canResize && (root.selected || root.resizeActive)
+        visible: root.canResize
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.top: parent.top
@@ -299,21 +318,20 @@ Rectangle {
         height: root.compactBlock ? 8 : 14
         radius: 3
         color: "transparent"
-        opacity: root.selected || root.resizeActive ? 1 : 0
+        opacity: root.handlesRevealed ? 0.82 : 0
         z: 22
 
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
         Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            height: root.compactBlock
-                ? (topResizeMouse.containsMouse || (root.resizeActive && root.resizeFromTop) ? 2 : 1)
-                : (topResizeMouse.containsMouse || (root.resizeActive && root.resizeFromTop) ? 4 : 2)
-            radius: 2
-            color: root.completed ? "#8A92A3" : root.accentColor
-            opacity: topResizeMouse.containsMouse || (root.resizeActive && root.resizeFromTop) ? 0.78 : 0.32
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.top: parent.top
+            anchors.topMargin: 1
+            width: Math.max(12, Math.min(56, parent.width * 0.58))
+            height: topResizeMouse.containsMouse || (root.resizeActive && root.resizeFromTop) ? 4 : 2
+            radius: height / 2
+            color: root.completed ? Theme.primaryText : Theme.blockHandle
+            opacity: topResizeMouse.containsMouse || (root.resizeActive && root.resizeFromTop) ? 0.82 : 0.62
 
             Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
@@ -331,6 +349,7 @@ Rectangle {
                 root.resizeActive = true
                 root.resizeFromTop = true
                 root.resizePressY = mouseY
+                root.resizePressSceneY = topResizeMouse.mapToItem(root.parent, mouseX, mouseY).y
                 root.resizeStartMinute = root.startMinute
                 root.resizeStartDuration = root.durationMinutes
                 root.resizePreviewStartMinute = root.startMinute
@@ -344,7 +363,8 @@ Rectangle {
                     return
                 }
                 var fixedEnd = root.resizeStartMinute + root.resizeStartDuration
-                var deltaMinutes = (mouseY - root.resizePressY) / root.minuteHeight
+                var sceneY = topResizeMouse.mapToItem(root.parent, mouseX, mouseY).y
+                var deltaMinutes = (sceneY - root.resizePressSceneY) / root.minuteHeight
                 var nextStart = Math.round((root.resizeStartMinute + deltaMinutes) / 15) * 15
                 nextStart = Math.max(root.dayStartMinute, Math.min(fixedEnd - 15, nextStart))
                 root.resizePreviewStartMinute = nextStart
@@ -352,12 +372,12 @@ Rectangle {
             }
 
             onReleased: {
-                root.resizeActive = false
                 if (root.resizePreviewDuration > 0
                         && (root.resizePreviewStartMinute !== root.startMinute
                             || root.resizePreviewDuration !== root.durationMinutes)) {
                     root.resizeTimeRequested(root.blockId, root.resizePreviewStartMinute, root.resizePreviewDuration)
                 }
+                root.resizeActive = false
             }
 
             onCanceled: root.resizeActive = false
@@ -366,7 +386,7 @@ Rectangle {
 
     Rectangle {
         id: resizeHandle
-        visible: root.canResize && (root.selected || root.resizeActive)
+        visible: root.canResize
         anchors.left: parent.left
         anchors.right: parent.right
         anchors.bottom: parent.bottom
@@ -376,21 +396,20 @@ Rectangle {
         height: root.compactBlock ? 8 : 14
         radius: 2
         color: "transparent"
-        opacity: root.selected || root.resizeActive ? 1 : 0
+        opacity: root.handlesRevealed ? 0.82 : 0
         z: 20
 
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
         Rectangle {
-            anchors.left: parent.left
-            anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
-            height: root.compactBlock
-                ? (resizeMouse.containsMouse || (root.resizeActive && !root.resizeFromTop) ? 2 : 1)
-                : (resizeMouse.containsMouse || root.resizeActive ? 4 : 2)
-            radius: 2
-            color: root.completed ? "#8A92A3" : root.accentColor
-            opacity: resizeMouse.containsMouse || root.resizeActive ? 0.78 : 0.28
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 1
+            width: Math.max(12, Math.min(56, parent.width * 0.58))
+            height: resizeMouse.containsMouse || (root.resizeActive && !root.resizeFromTop) ? 4 : 2
+            radius: height / 2
+            color: root.completed ? Theme.primaryText : Theme.blockHandle
+            opacity: resizeMouse.containsMouse || root.resizeActive ? 0.82 : 0.62
 
             Behavior on height { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
@@ -408,6 +427,7 @@ Rectangle {
                 root.resizeActive = true
                 root.resizeFromTop = false
                 root.resizePressY = mouseY
+                root.resizePressSceneY = resizeMouse.mapToItem(root.parent, mouseX, mouseY).y
                 root.resizeStartMinute = root.startMinute
                 root.resizeStartDuration = root.durationMinutes
                 root.resizePreviewStartMinute = root.startMinute
@@ -420,17 +440,18 @@ Rectangle {
                 if (!pressed) {
                     return
                 }
-                var deltaMinutes = (mouseY - root.resizePressY) / root.minuteHeight
+                var sceneY = resizeMouse.mapToItem(root.parent, mouseX, mouseY).y
+                var deltaMinutes = (sceneY - root.resizePressSceneY) / root.minuteHeight
                 var nextDuration = Math.round((root.resizeStartDuration + deltaMinutes) / 15) * 15
                 root.resizePreviewDuration = Math.max(15, Math.min(root.dayEndMinute - root.startMinute, nextDuration))
                 root.resizePreviewStartMinute = root.startMinute
             }
 
             onReleased: {
-                root.resizeActive = false
                 if (root.resizePreviewDuration > 0 && root.resizePreviewDuration !== root.durationMinutes) {
                     root.resizeTimeRequested(root.blockId, root.startMinute, root.resizePreviewDuration)
                 }
+                root.resizeActive = false
             }
 
             onCanceled: root.resizeActive = false
@@ -438,8 +459,92 @@ Rectangle {
     }
 
     Rectangle {
+        id: leftSpanHandle
+        visible: root.canResize && root.dayCount > 1
+        anchors.left: parent.left
+        anchors.top: parent.top
+        anchors.bottom: parent.bottom
+        anchors.leftMargin: root.compactBlock ? 1 : 3
+        anchors.topMargin: root.compactBlock ? 3 : 6
+        anchors.bottomMargin: root.compactBlock ? 3 : 6
+        width: root.compactBlock ? 9 : 14
+        radius: 7
+        color: "transparent"
+        opacity: root.handlesRevealed ? 0.82 : 0
+        z: 24
+
+        Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.leftMargin: 1
+            anchors.verticalCenter: parent.verticalCenter
+            width: leftSpanMouse.containsMouse || (root.spanResizeActive && root.spanResizeFromLeft) ? 5 : 3
+            height: Math.max(12, Math.min(34, parent.height * 0.58))
+            radius: width / 2
+            color: root.completed ? Theme.primaryText : Theme.blockHandle
+            opacity: leftSpanMouse.containsMouse || (root.spanResizeActive && root.spanResizeFromLeft) ? 0.82 : 0.5
+
+            Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+            Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
+        }
+
+        MouseArea {
+            id: leftSpanMouse
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.SizeHorCursor
+            acceptedButtons: Qt.LeftButton
+            preventStealing: true
+
+            onPressed: {
+                root.spanResizeActive = true
+                root.spanResizeFromLeft = true
+                root.spanPressSceneX = leftSpanMouse.mapToItem(root.parent, mouseX, mouseY).x
+                root.spanStartDays = Math.max(1, root.spanDays)
+                root.spanFixedEndDayIndex = root.dayIndex + root.spanStartDays - 1
+                root.spanPreviewStartDayIndex = root.dayIndex
+                root.spanPreviewVisualStartDayIndex = root.dayIndex
+                root.spanPreviewDays = root.spanStartDays
+                root.spanPreviewVisualDays = root.spanStartDays
+                ScheduleService.selectTimelineItem(root.taskId, root.blockId)
+                root.selectedItem(root.taskId, root.blockId)
+            }
+
+            onPositionChanged: {
+                if (!pressed) {
+                    return
+                }
+                var sceneX = leftSpanMouse.mapToItem(root.parent, mouseX, mouseY).x
+                var rawStart = root.dayIndex + (sceneX - root.spanPressSceneX) / root.dayWidth
+                var visualStart = Math.max(0, Math.min(root.spanFixedEndDayIndex, rawStart))
+                var nextStart = Math.max(0, Math.min(root.spanFixedEndDayIndex, Math.round(visualStart)))
+                root.spanPreviewVisualStartDayIndex = visualStart
+                root.spanPreviewVisualDays = root.spanFixedEndDayIndex - visualStart + 1
+                if (nextStart !== root.spanPreviewStartDayIndex) {
+                    root.spanPreviewStartDayIndex = nextStart
+                    root.spanPreviewDays = root.spanFixedEndDayIndex - nextStart + 1
+                    spanDrill.restart()
+                }
+            }
+
+            onReleased: {
+                if (root.spanPreviewStartDayIndex !== root.dayIndex) {
+                    root.pendingSpanStartDayIndex = root.spanPreviewStartDayIndex
+                    root.pendingSpanEndDayIndex = root.spanFixedEndDayIndex
+                    spanCommitTimer.restart()
+                } else {
+                    root.spanResizeActive = false
+                }
+            }
+
+            onCanceled: root.spanResizeActive = false
+        }
+    }
+
+    Rectangle {
         id: spanHandle
-        visible: root.canResize && root.dayCount > 1 && (root.selected || root.spanResizeActive)
+        visible: root.canResize && root.dayCount > 1
         anchors.right: parent.right
         anchors.top: parent.top
         anchors.bottom: parent.bottom
@@ -449,20 +554,20 @@ Rectangle {
         width: root.compactBlock ? 9 : 14
         radius: 7
         color: "transparent"
-        opacity: root.selected || root.spanResizeActive ? 1 : 0
+        opacity: root.handlesRevealed ? 0.82 : 0
         z: 23
 
         Behavior on opacity { NumberAnimation { duration: 140; easing.type: Easing.OutCubic } }
 
         Rectangle {
-            anchors.centerIn: parent
-            width: root.compactBlock
-                ? (spanMouse.containsMouse || root.spanResizeActive ? 3 : 2)
-                : (spanMouse.containsMouse || root.spanResizeActive ? 5 : 3)
-            height: root.compactBlock ? Math.max(10, Math.min(parent.height, 22)) : Math.max(18, Math.min(parent.height, 34))
+            anchors.right: parent.right
+            anchors.rightMargin: 1
+            anchors.verticalCenter: parent.verticalCenter
+            width: spanMouse.containsMouse || (root.spanResizeActive && !root.spanResizeFromLeft) ? 5 : 3
+            height: Math.max(12, Math.min(34, parent.height * 0.58))
             radius: width / 2
-            color: root.completed ? "#8A92A3" : root.accentColor
-            opacity: spanMouse.containsMouse || root.spanResizeActive ? 0.78 : 0.36
+            color: root.completed ? Theme.primaryText : Theme.blockHandle
+            opacity: spanMouse.containsMouse || root.spanResizeActive ? 0.82 : 0.62
 
             Behavior on width { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
             Behavior on opacity { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
@@ -478,10 +583,14 @@ Rectangle {
 
             onPressed: {
                 root.spanResizeActive = true
+                root.spanResizeFromLeft = false
                 root.spanPressX = mouseX
+                root.spanPressSceneX = spanMouse.mapToItem(root.parent, mouseX, mouseY).x
                 root.spanStartDays = Math.max(1, root.spanDays)
                 root.spanPreviewDays = root.spanStartDays
                 root.spanPreviewVisualDays = root.spanStartDays
+                root.spanPreviewStartDayIndex = root.dayIndex
+                root.spanPreviewVisualStartDayIndex = root.dayIndex
                 ScheduleService.selectTimelineItem(root.taskId, root.blockId)
                 root.selectedItem(root.taskId, root.blockId)
             }
@@ -490,7 +599,8 @@ Rectangle {
                 if (!pressed) {
                     return
                 }
-                var rawDays = root.spanStartDays + (mouseX - root.spanPressX) / root.dayWidth
+                var sceneX = spanMouse.mapToItem(root.parent, mouseX, mouseY).x
+                var rawDays = root.spanStartDays + (sceneX - root.spanPressSceneX) / root.dayWidth
                 var visualDays = Math.max(1, Math.min(root.dayCount - root.dayIndex, rawDays))
                 var nextDays = Math.max(1, Math.min(root.dayCount - root.dayIndex, Math.round(visualDays)))
                 root.spanPreviewVisualDays = visualDays
@@ -502,6 +612,7 @@ Rectangle {
 
             onReleased: {
                 if (root.spanPreviewDays !== root.spanDays) {
+                    root.pendingSpanStartDayIndex = root.dayIndex
                     root.pendingSpanEndDayIndex = root.dayIndex + root.spanPreviewDays - 1
                     spanCommitTimer.restart()
                 } else {
@@ -521,9 +632,9 @@ Rectangle {
         width: root.resizeFromTop ? 106 : 78
         height: 24
         radius: 7
-        color: "#10141C"
+        color: Theme.surface
         border.width: 1
-        border.color: "#30384C"
+        border.color: Theme.border
         z: 21
 
         Text {
@@ -531,7 +642,7 @@ Rectangle {
             text: root.resizeFromTop
                 ? resizeLabelHelper.resizeLabel(root.resizePreviewStartMinute, root.resizePreviewDuration)
                 : qsTr("%1 分钟").arg(root.resizePreviewDuration)
-            color: "#E6EAF2"
+            color: Theme.primaryText
             font.pixelSize: 11
             font.weight: Font.DemiBold
         }
@@ -539,21 +650,23 @@ Rectangle {
 
     Rectangle {
         visible: root.spanResizeActive
-        anchors.right: spanHandle.left
+        anchors.right: root.spanResizeFromLeft ? undefined : spanHandle.left
+        anchors.left: root.spanResizeFromLeft ? leftSpanHandle.right : undefined
         anchors.verticalCenter: parent.verticalCenter
         anchors.rightMargin: 8
+        anchors.leftMargin: 8
         width: 64
         height: 24
         radius: 7
-        color: "#10141C"
+        color: Theme.surface
         border.width: 1
-        border.color: "#30384C"
+        border.color: Theme.border
         z: 24
 
         Text {
             anchors.centerIn: parent
             text: qsTr("%1 天").arg(root.spanPreviewDays)
-            color: "#E6EAF2"
+            color: Theme.primaryText
             font.pixelSize: 11
             font.weight: Font.DemiBold
         }

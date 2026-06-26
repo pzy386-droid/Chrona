@@ -1,132 +1,372 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Chrona
 
 Rectangle {
     id: root
+
     visible: false
-    color: "#B00A0E17"
+    color: Theme.overlay
     z: 200
 
     property string mode: "daily"
+    property string pendingMode: ""
     property var plan: ({})
     property var selectedSuggestion: ({})
+    property bool loading: false
+    property point dragOffset: Qt.point(0, 0)
 
-    function reload() {
-        plan = mode === "suggestions"
-            ? ScheduleService.previewScheduleSuggestions()
-            : ScheduleService.aiTodayPlan()
+    function modeKey() {
+        return mode === "suggestions" ? "schedule_suggestions" : "daily_plan"
+    }
+
+    function centerPanel() {
+        panel.x = Math.round((root.width - panel.width) / 2)
+        panel.y = Math.round((root.height - panel.height) / 2)
+    }
+
+    function startLoad() {
+        loading = true
+        pendingMode = modeKey()
+        plan = {
+            title: mode === "suggestions" ? qsTr("日程调整建议") : qsTr("今日计划"),
+            summary: qsTr("Chrona AI 正在分析任务、冲突和可用容量。"),
+            riskLevel: "low",
+            currentFocus: "",
+            reasons: [],
+            suggestions: [],
+            provider: "chrona",
+            model: qsTr("Chrona AI")
+        }
+        selectedSuggestion = ({})
+        centerPanel()
+        ScheduleService.requestSchedulePlan(pendingMode)
+    }
+
+    function applyPlan(result) {
+        loading = false
+        plan = result || ({})
         selectedSuggestion = plan.suggestions && plan.suggestions.length > 0 ? plan.suggestions[0] : ({})
     }
 
-    onVisibleChanged: if (visible) reload()
+    onVisibleChanged: if (visible) startLoad()
+
+    Connections {
+        target: ScheduleService
+        function onSchedulePlanReady(mode, result) {
+            if (!root.visible || mode !== root.pendingMode) {
+                return
+            }
+            root.applyPlan(result)
+        }
+    }
+
     MouseArea { anchors.fill: parent }
 
     Rectangle {
-        width: Math.min(parent.width - 48, 760)
-        height: Math.min(parent.height - 48, 680)
-        radius: 16
-        color: "#11151D"
-        border.color: "#30384C"
-        border.width: 1
-        anchors.centerIn: parent
+        id: panel
+        width: Math.min(root.width - 48, 780)
+        height: Math.min(root.height - 48, 640)
+        radius: 22
+        color: Theme.glassSurface
+        border.color: root.loading ? Theme.accentBright : Theme.border
+        border.width: root.loading ? 1.4 : 1
+        clip: true
+        scale: dragArea.pressed ? 1.012 : 1.0
+
+        Behavior on scale { NumberAnimation { duration: 160; easing.type: Easing.OutCubic } }
+        Behavior on border.color { ColorAnimation { duration: 180 } }
+        Behavior on border.width { NumberAnimation { duration: 180 } }
+
+        gradient: Gradient {
+            GradientStop { position: 0.0; color: Theme.dark ? "#241D2537" : "#B8FFFFFF" }
+            GradientStop { position: 0.52; color: Theme.dark ? "#18111620" : "#98F8FAFD" }
+            GradientStop { position: 1.0; color: Theme.dark ? "#26101722" : "#A8E7EDF5" }
+        }
+
+        Rectangle {
+            anchors.fill: parent
+            radius: parent.radius
+            color: "transparent"
+            border.width: 1
+            border.color: Theme.glassBorder
+        }
+
+        MouseArea {
+            id: dragArea
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 74
+            cursorShape: pressed ? Qt.ClosedHandCursor : Qt.OpenHandCursor
+            onPressed: root.dragOffset = Qt.point(mouse.x, mouse.y)
+            onPositionChanged: {
+                if (!pressed) {
+                    return
+                }
+                panel.x = Math.max(12, Math.min(root.width - panel.width - 12, panel.x + mouse.x - root.dragOffset.x))
+                panel.y = Math.max(12, Math.min(root.height - panel.height - 12, panel.y + mouse.y - root.dragOffset.y))
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 24
+            anchors.margins: 22
             spacing: 14
 
             RowLayout {
                 Layout.fillWidth: true
-                ColumnLayout {
-                    Layout.fillWidth: true
+                spacing: 14
+
+                Rectangle {
+                    Layout.preferredWidth: 46
+                    Layout.preferredHeight: 46
+                    radius: 16
+                    color: Theme.surfaceHover
+                    border.width: 1
+                    border.color: "#5060FF"
+
                     Text {
-                        Layout.fillWidth: true
-                        text: root.plan.title || (root.mode === "suggestions" ? qsTr("智能排程建议") : qsTr("AI 今日计划"))
-                        color: "#E6EAF2"
-                        font.pixelSize: 24
-                        font.weight: Font.Bold
-                    }
-                    Text {
-                        Layout.fillWidth: true
-                        text: qsTr("来源：%1 · %2")
-                            .arg(root.plan.provider === "deepseek" ? "DeepSeek" : qsTr("本地规则"))
-                            .arg(root.plan.model || "")
-                        color: "#7C8CFF"
-                        font.pixelSize: 11
+                        anchors.centerIn: parent
+                        text: "AI"
+                        color: Theme.accentBright
+                        font.pixelSize: 14
+                        font.weight: Font.Black
                     }
                 }
-                Button { text: qsTr("关闭"); onClicked: root.visible = false }
-            }
 
-            Text {
-                Layout.fillWidth: true
-                text: root.plan.summary || qsTr("正在分析当前任务与日程")
-                color: "#C8D0DE"
-                font.pixelSize: 14
-                wrapMode: Text.WordWrap
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: 3
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: root.plan.title || (root.mode === "suggestions" ? qsTr("日程调整建议") : qsTr("今日计划"))
+                        color: Theme.primaryText
+                        font.pixelSize: 25
+                        font.weight: Font.Bold
+                        elide: Text.ElideRight
+                    }
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("来源：Chrona AI · 确认前不会修改任何数据")
+                        color: Theme.tertiaryText
+                        font.pixelSize: 12
+                        elide: Text.ElideRight
+                    }
+                }
+
+                PlanButton {
+                    text: qsTr("关闭")
+                    muted: true
+                    onClicked: root.visible = false
+                }
             }
 
             Rectangle {
                 Layout.fillWidth: true
-                Layout.preferredHeight: 64
-                radius: 10
-                color: root.plan.riskLevel === "high" ? "#2A1D1B" : "#151A23"
+                Layout.preferredHeight: root.loading ? 132 : 96
+                radius: 16
+                color: root.plan.riskLevel === "high" ? Theme.dangerSurface : Theme.surfaceMuted
                 border.width: 1
-                border.color: root.plan.riskLevel === "high" ? "#7A4334" : "#2C3548"
+                border.color: root.plan.riskLevel === "high" ? Theme.dangerBorder : Theme.border
+                clip: true
+
                 RowLayout {
                     anchors.fill: parent
-                    anchors.margins: 14
-                    Text { text: qsTr("现在建议"); color: "#8D98AB"; font.pixelSize: 12 }
-                    Text {
+                    anchors.margins: 16
+                    spacing: 14
+
+                    Item {
+                        Layout.preferredWidth: 42
+                        Layout.preferredHeight: 42
+                        visible: root.loading
+
+                        Rectangle {
+                            anchors.fill: parent
+                            radius: 21
+                            color: "transparent"
+                            border.width: 2
+                            border.color: Theme.border
+                        }
+
+                        Rectangle {
+                            width: 9
+                            height: 9
+                            radius: 5
+                            color: Theme.accentBright
+                            x: 16
+                            y: -1
+                        }
+
+                        RotationAnimation on rotation {
+                            running: root.loading
+                            loops: Animation.Infinite
+                            from: 0
+                            to: 360
+                            duration: 920
+                            easing.type: Easing.Linear
+                        }
+                    }
+
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        text: root.plan.currentFocus || qsTr("检查今日计划并按优先级执行")
-                        color: "#E6EAF2"
-                        font.pixelSize: 15
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
+                        spacing: 6
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.loading ? qsTr("正在生成建议") : (root.plan.currentFocus || qsTr("当前建议"))
+                            color: Theme.primaryText
+                            font.pixelSize: 16
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.plan.summary || qsTr("Chrona AI 会优先参考当前时间块、固定事件和未排入任务。")
+                            color: Theme.secondaryText
+                            font.pixelSize: 12
+                            lineHeight: 1.25
+                            wrapMode: Text.WordWrap
+                            maximumLineCount: root.loading ? 3 : 2
+                            elide: Text.ElideRight
+                        }
                     }
                 }
             }
 
-            Text { text: qsTr("分析依据"); color: "#E6EAF2"; font.pixelSize: 14; font.weight: Font.DemiBold }
-            ListView {
+            RowLayout {
                 Layout.fillWidth: true
-                Layout.preferredHeight: Math.min(130, contentHeight)
-                clip: true
-                spacing: 6
-                model: root.plan.reasons || []
-                delegate: Text {
-                    width: ListView.view.width
-                    text: "• " + modelData
-                    color: "#9AA4B2"
-                    font.pixelSize: 12
-                    wrapMode: Text.WordWrap
+                spacing: 12
+
+                InfoCard {
+                    Layout.fillWidth: true
+                    title: qsTr("分析依据")
+                    lines: root.loading
+                           ? [qsTr("读取任务与时间块"), qsTr("检查容量与冲突"), qsTr("生成可确认操作")]
+                           : (root.plan.reasons || [])
+                }
+
+                Rectangle {
+                    Layout.preferredWidth: 180
+                    Layout.preferredHeight: 112
+                    radius: 14
+                    color: Theme.surface
+                    border.width: 1
+                    border.color: Theme.border
+
+                    ColumnLayout {
+                        anchors.fill: parent
+                        anchors.margins: 14
+                        spacing: 8
+
+                        Text {
+                            text: qsTr("状态")
+                            color: Theme.secondaryText
+                            font.pixelSize: 12
+                        }
+
+                        Text {
+                            text: root.plan.riskLevel === "high" ? qsTr("需调整") : qsTr("可执行")
+                            color: root.plan.riskLevel === "high" ? Theme.error : Theme.success
+                            font.pixelSize: 22
+                            font.weight: Font.Bold
+                        }
+
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.loading ? qsTr("分析中") : qsTr("手动确认后执行")
+                            color: Theme.tertiaryText
+                            font.pixelSize: 11
+                            elide: Text.ElideRight
+                        }
+                    }
                 }
             }
 
-            Text { text: qsTr("可确认的调整"); color: "#E6EAF2"; font.pixelSize: 14; font.weight: Font.DemiBold }
+            Text {
+                text: qsTr("可确认的调整")
+                color: Theme.primaryText
+                font.pixelSize: 14
+                font.weight: Font.DemiBold
+            }
+
             ListView {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
                 clip: true
-                spacing: 8
-                model: root.plan.suggestions || []
+                spacing: 10
+                model: root.loading ? [] : (root.plan.suggestions || [])
+
                 delegate: Rectangle {
                     width: ListView.view.width
                     height: 86
-                    radius: 10
-                    color: suggestionMouse.containsMouse || root.selectedSuggestion === modelData ? "#202638" : "#151A23"
+                    radius: 14
+                    color: suggestionMouse.containsMouse || root.selectedSuggestion === modelData ? Theme.surfaceHover : Theme.surfaceMuted
                     border.width: 1
-                    border.color: root.selectedSuggestion === modelData ? "#7C8CFF" : "#2C3548"
-                    Column {
+                    border.color: root.selectedSuggestion === modelData ? Theme.accentBright : Theme.borderSoft
+                    scale: root.selectedSuggestion === modelData ? 1.008 : 1.0
+
+                    Behavior on color { ColorAnimation { duration: 150 } }
+                    Behavior on border.color { ColorAnimation { duration: 150 } }
+                    Behavior on scale { NumberAnimation { duration: 150; easing.type: Easing.OutCubic } }
+
+                    RowLayout {
                         anchors.fill: parent
-                        anchors.margins: 12
-                        spacing: 5
-                        Text { width: parent.width; text: modelData.title || qsTr("调整建议"); color: "#E6EAF2"; font.pixelSize: 13; font.weight: Font.DemiBold; elide: Text.ElideRight }
-                        Text { width: parent.width; text: modelData.description || ""; color: "#9AA4B2"; font.pixelSize: 11; elide: Text.ElideRight }
-                        Text { width: parent.width; text: modelData.impact || ""; color: "#A9F0C9"; font.pixelSize: 11; elide: Text.ElideRight }
+                        anchors.margins: 14
+                        spacing: 12
+
+                        Rectangle {
+                            Layout.preferredWidth: 34
+                            Layout.preferredHeight: 34
+                            radius: 10
+                            color: root.selectedSuggestion === modelData ? Theme.surfaceSelected : Theme.surfaceHover
+                            border.width: 1
+                            border.color: Theme.border
+
+                            Text {
+                                anchors.centerIn: parent
+                                text: index + 1
+                                color: Theme.accentBright
+                                font.pixelSize: 13
+                                font.weight: Font.Bold
+                            }
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 4
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.title || qsTr("调整建议")
+                                color: Theme.primaryText
+                                font.pixelSize: 13
+                                font.weight: Font.DemiBold
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.description || ""
+                                color: Theme.secondaryText
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+
+                            Text {
+                                Layout.fillWidth: true
+                                text: modelData.impact || ""
+                                color: Theme.success
+                                font.pixelSize: 11
+                                elide: Text.ElideRight
+                            }
+                        }
                     }
+
                     MouseArea {
                         id: suggestionMouse
                         anchors.fill: parent
@@ -139,22 +379,99 @@ Rectangle {
 
             RowLayout {
                 Layout.fillWidth: true
+
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("未经确认，AI 不会创建、移动或修改任何数据。")
-                    color: "#7D8798"
+                    text: qsTr("未经确认，Chrona AI 不会创建、移动或修改任何数据。")
+                    color: Theme.tertiaryText
                     font.pixelSize: 11
+                    elide: Text.ElideRight
                 }
-                Button {
+
+                PlanButton {
                     text: qsTr("确认执行")
-                    highlighted: true
-                    enabled: root.selectedSuggestion && root.selectedSuggestion.actionType
+                    enabled: !root.loading && Boolean(root.selectedSuggestion && root.selectedSuggestion.actionType)
+                    opacity: enabled ? 1 : 0.45
                     onClicked: {
                         var result = ScheduleService.applyScheduleSuggestion(root.selectedSuggestion)
-                        if (result && result.ok) root.reload()
+                        if (result && result.ok) {
+                            root.startLoad()
+                        }
                     }
                 }
             }
+        }
+    }
+
+    component InfoCard: Rectangle {
+        id: infoCard
+        property string title: ""
+        property var lines: []
+
+        Layout.preferredHeight: 112
+        radius: 14
+        color: Theme.surface
+        border.width: 1
+        border.color: Theme.border
+
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 14
+            spacing: 8
+
+            Text {
+                text: infoCard.title
+                color: Theme.primaryText
+                font.pixelSize: 13
+                font.weight: Font.DemiBold
+            }
+
+            Repeater {
+                model: infoCard.lines
+
+                Text {
+                    Layout.fillWidth: true
+                    text: "· " + modelData
+                    color: Theme.secondaryText
+                    font.pixelSize: 11
+                    elide: Text.ElideRight
+                }
+            }
+        }
+    }
+
+    component PlanButton: Rectangle {
+        id: button
+        property alias text: label.text
+        property bool muted: false
+        property bool enabled: true
+        signal clicked()
+
+        Layout.preferredWidth: 104
+        Layout.preferredHeight: 38
+        radius: 10
+        color: muted ? (mouse.containsMouse ? Theme.surfaceHover : Theme.surfaceElevated) : (mouse.containsMouse ? "#8795FF" : Theme.accentBright)
+        border.width: muted ? 1 : 0
+        border.color: Theme.border
+
+        Behavior on color { ColorAnimation { duration: 150 } }
+        Behavior on opacity { NumberAnimation { duration: 140 } }
+
+        Text {
+            id: label
+            anchors.centerIn: parent
+            color: muted ? Theme.primaryText : Theme.accentText
+            font.pixelSize: 13
+            font.weight: Font.DemiBold
+        }
+
+        MouseArea {
+            id: mouse
+            anchors.fill: parent
+            enabled: button.enabled
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: button.clicked()
         }
     }
 }

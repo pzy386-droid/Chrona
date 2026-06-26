@@ -20,6 +20,8 @@ qt_add_executable(Chrona
     src/app/AppController.h
     src/app/LocaleService.cpp
     src/app/LocaleService.h
+    src/app/ThemeService.cpp
+    src/app/ThemeService.h
     src/app/ScheduleService.cpp
     src/app/ScheduleService.h
     src/app/TimelineModel.cpp
@@ -64,6 +66,8 @@ qt_add_executable(Chrona
     src/ai/providers/DeepSeekProvider.h
 )
 
+set_source_files_properties(src/ui/qml/components/Theme.qml PROPERTIES QT_QML_SINGLETON_TYPE TRUE)
+
 qt_add_qml_module(Chrona
     URI Chrona
     VERSION 1.0
@@ -78,10 +82,13 @@ qt_add_qml_module(Chrona
         src/ui/qml/panels/CurrentFocusPanel.qml
         src/ui/qml/components/IconButton.qml
         src/ui/qml/components/LanguageToggle.qml
+        src/ui/qml/components/Theme.qml
+        src/ui/qml/components/ThemeToggle.qml
         src/ui/qml/components/PriorityPill.qml
         src/ui/qml/components/QuickAddBar.qml
         src/ui/qml/components/SegmentedControl.qml
         src/ui/qml/components/TimeBlock.qml
+        src/ui/qml/components/MonthWheelPicker.qml
         src/ui/qml/components/TimeWheelPicker.qml
         src/ui/qml/components/TimelineView.qml
         src/ui/qml/panels/DailyPlanOverlay.qml

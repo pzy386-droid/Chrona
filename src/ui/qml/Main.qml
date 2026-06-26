@@ -10,15 +10,31 @@ ApplicationWindow {
     height: 920
     visible: true
     title: "Chrona"
-    color: "#0F1117"
+    color: Theme.appBackground
 
     property bool detailOpen: true
     property string currentPage: "timeline"
 
+    function showTodayTimeline(mode, callback) {
+        ScheduleService.setSelectedDate(Qt.formatDate(new Date(), "yyyy-MM-dd"))
+        window.currentPage = mode
+        Qt.callLater(callback)
+    }
+
     function scrollToFocusBlock() {
-        if (timelinePage && typeof timelinePage.scrollToFocusBlock === 'function') {
-            timelinePage.scrollToFocusBlock()
-        }
+        showTodayTimeline("focus", function() {
+            if (timelinePage && typeof timelinePage.scrollToFocusBlock === "function") {
+                timelinePage.scrollToFocusBlock()
+            }
+        })
+    }
+
+    function scrollToCourses() {
+        showTodayTimeline("courses", function() {
+            if (timelinePage && typeof timelinePage.scrollToCourses === "function") {
+                timelinePage.scrollToCourses()
+            }
+        })
     }
 
     Connections {
@@ -31,7 +47,7 @@ ApplicationWindow {
 
     Rectangle {
         anchors.fill: parent
-        color: "#0F1117"
+        color: Theme.appBackground
 
         RowLayout {
             anchors.fill: parent
@@ -41,8 +57,9 @@ ApplicationWindow {
                 id: sidebar
                 Layout.fillHeight: true
                 Layout.preferredWidth: collapsed ? 76 : 248
-                scrollToFocus: window.scrollToFocusBlock
                 currentPage: window.currentPage
+                onFocusRequested: window.scrollToFocusBlock()
+                onCoursesRequested: window.scrollToCourses()
                 onNavigateRequested: function(page) {
                     window.currentPage = page
                     if (page === "month" || page === "deadlines") {
@@ -88,9 +105,9 @@ ApplicationWindow {
             TaskDetailPanel {
                 id: detailPanel
                 Layout.fillHeight: true
-                Layout.preferredWidth: window.detailOpen && window.currentPage === "timeline" ? 332 : 0
+                Layout.preferredWidth: window.detailOpen && window.currentPage !== "month" ? 332 : 0
                 clip: true
-                opacity: window.detailOpen && window.currentPage === "timeline" ? 1 : 0
+                opacity: window.detailOpen && window.currentPage !== "month" ? 1 : 0
                 task: ScheduleService.selectedDetail
                 readOnly: ScheduleService.selectedDateText !== Qt.formatDate(new Date(), "yyyy-MM-dd")
                 onCloseRequested: window.detailOpen = false
@@ -106,22 +123,22 @@ ApplicationWindow {
         }
 
         Rectangle {
-            visible: !window.detailOpen && window.currentPage === "timeline"
+            visible: !window.detailOpen && window.currentPage !== "month"
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: 16
             width: 38
             height: 78
             radius: 12
-            color: panelOpenMouse.containsMouse ? "#202638" : "#161A23"
+            color: panelOpenMouse.containsMouse ? Theme.surfaceHover : Theme.surface
             border.width: 1
-            border.color: "#30384C"
+            border.color: Theme.border
             z: 100
 
             Text {
                 anchors.centerIn: parent
-                text: "›"
-                color: "#E6EAF2"
+                text: "\u203A"
+                color: Theme.primaryText
                 font.pixelSize: 24
                 font.weight: Font.DemiBold
             }

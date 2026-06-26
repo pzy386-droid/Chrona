@@ -4,7 +4,7 @@ import QtQuick.Controls
 Rectangle {
     id: root
     anchors.fill: parent
-    color: "#B00A0E17" // 半透明深色背景，拉满仪式感
+    color: Theme.overlay // 半透明深色背景，拉满仪式感
     z: 200 // 确保在最顶层
 
     // 拦截点击事件，防止穿透到下层时间轴
@@ -15,8 +15,8 @@ Rectangle {
         width: 640
         height: 520
         radius: 16
-        color: "#161A23"
-        border.color: "#30384C"
+        color: Theme.surface
+        border.color: Theme.border
         border.width: 1
         anchors.centerIn: parent
 
@@ -24,7 +24,7 @@ Rectangle {
         Text {
             id: titleText
             text: "☀️ 今日学习计划确认"
-            color: "#E6EAF2"
+            color: Theme.primaryText
             font.pixelSize: 22
             font.weight: Font.Bold
             anchors { top: parent.top; topMargin: 24; horizontalCenter: parent.horizontalCenter }
@@ -39,13 +39,13 @@ Rectangle {
             // 容量健康度进度条 (可以复用你们已有的进度条组件样式)
             Row {
                 spacing: 16
-                Text { text: "大脑容量状态:"; color: "#94A3B8"; font.pixelSize: 14 }
+                Text { text: "大脑容量状态:"; color: Theme.secondaryText; font.pixelSize: 14 }
                 // 假设后端传过来的今日容量是 scheduleService.todayCapacity
                 Text { text: "80% (健康)"; color: "#4ADE80"; font.weight: Font.Bold }
             }
 
             // 今日待办简要列表 view
-            Text { text: "📅 今日排程概览："; color: "#E6EAF2"; font.weight: Font.DemiBold }
+            Text { text: "📅 今日排程概览："; color: Theme.primaryText; font.weight: Font.DemiBold }
 
             // 无法安排的任务警告 (如果有的话)
             Rectangle {

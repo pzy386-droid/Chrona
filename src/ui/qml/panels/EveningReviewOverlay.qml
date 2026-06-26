@@ -1,11 +1,12 @@
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
+import Chrona
 
 Rectangle {
     id: root
     visible: false
-    color: "#B00A0E17"
+    color: Theme.overlay
     z: 200
 
     property var review: ({})
@@ -22,8 +23,8 @@ Rectangle {
         width: Math.min(parent.width - 48, 760)
         height: Math.min(parent.height - 48, 680)
         radius: 16
-        color: "#11151D"
-        border.color: "#30384C"
+        color: Theme.canvasBackground
+        border.color: Theme.border
         border.width: 1
         anchors.centerIn: parent
 
@@ -43,7 +44,7 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         text: qsTr("晚间复盘")
-                        color: "#E6EAF2"
+                        color: Theme.primaryText
                         font.pixelSize: 24
                         font.weight: Font.Bold
                     }
@@ -51,7 +52,7 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         text: root.review.summary || qsTr("复盘今天的计划完成情况")
-                        color: "#8D98AB"
+                        color: Theme.tertiaryText
                         font.pixelSize: 12
                         wrapMode: Text.WordWrap
                     }
@@ -74,7 +75,7 @@ Rectangle {
                     Layout.fillWidth: true
                     label: qsTr("计划分钟")
                     value: qsTr("%1").arg(root.review.plannedMinutes || 0)
-                    accent: "#7C8CFF"
+                    accent: Theme.accentBright
                 }
                 StatCard {
                     Layout.fillWidth: true
@@ -88,7 +89,7 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 10
                 radius: 5
-                color: "#1D2432"
+                color: Theme.surfaceElevated
 
                 Rectangle {
                     width: parent.width * Math.max(0, Math.min(100, root.review.completionRate || 0)) / 100
@@ -150,9 +151,9 @@ Rectangle {
         property var modelData: []
 
         radius: 10
-        color: "#151A23"
+        color: Theme.surfaceMuted
         border.width: 1
-        border.color: "#2C3548"
+        border.color: Theme.borderSoft
 
         ColumnLayout {
             anchors.fill: parent
@@ -162,7 +163,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: title + qsTr(" · %1").arg(modelData.length || 0)
-                color: "#E6EAF2"
+                color: Theme.primaryText
                 font.pixelSize: 14
                 font.weight: Font.DemiBold
             }
@@ -178,9 +179,9 @@ Rectangle {
                     width: ListView.view.width
                     height: 58
                     radius: 8
-                    color: "#10141C"
+                    color: Theme.surface
                     border.width: 1
-                    border.color: "#252B3A"
+                    border.color: Theme.surfaceHover
 
                     Column {
                         anchors.fill: parent
@@ -190,7 +191,7 @@ Rectangle {
                         Text {
                             width: parent.width
                             text: modelData.title || qsTr("未命名任务")
-                            color: "#E6EAF2"
+                            color: Theme.primaryText
                             font.pixelSize: 12
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
@@ -199,7 +200,7 @@ Rectangle {
                         Text {
                             width: parent.width
                             text: qsTr("%1 分钟 · %2").arg(modelData.todayPlannedMinutes || modelData.remainingMinutes || 0).arg(modelData.deadlineText || "")
-                            color: "#94A3B8"
+                            color: Theme.secondaryText
                             font.pixelSize: 11
                             elide: Text.ElideRight
                         }
@@ -210,7 +211,7 @@ Rectangle {
                     anchors.centerIn: parent
                     visible: modelData.length === 0
                     text: emptyText
-                    color: "#7D8798"
+                    color: Theme.tertiaryText
                     font.pixelSize: 12
                 }
             }
@@ -220,13 +221,13 @@ Rectangle {
     component StatCard: Rectangle {
         property string label: ""
         property string value: ""
-        property color accent: "#7C8CFF"
+        property color accent: Theme.accentBright
 
         Layout.preferredHeight: 92
         radius: 10
-        color: "#151A23"
+        color: Theme.surfaceMuted
         border.width: 1
-        border.color: "#2C3548"
+        border.color: Theme.borderSoft
 
         ColumnLayout {
             anchors.fill: parent
@@ -236,7 +237,7 @@ Rectangle {
             Text {
                 Layout.fillWidth: true
                 text: label
-                color: "#8D98AB"
+                color: Theme.tertiaryText
                 font.pixelSize: 12
             }
 
@@ -257,14 +258,14 @@ Rectangle {
         Layout.preferredWidth: 32
         Layout.preferredHeight: 32
         radius: 8
-        color: closeMouse.containsMouse ? "#202638" : "#151A23"
+        color: closeMouse.containsMouse ? Theme.surfaceHover : Theme.surfaceMuted
         border.width: 1
-        border.color: "#2C3548"
+        border.color: Theme.borderSoft
 
         Text {
             anchors.centerIn: parent
             text: "x"
-            color: "#AAB4C6"
+            color: Theme.secondaryText
             font.pixelSize: 16
             font.weight: Font.DemiBold
         }
@@ -287,15 +288,15 @@ Rectangle {
         Layout.preferredHeight: 44
         radius: 10
         color: muted
-            ? (mouse.containsMouse ? "#202638" : "#151A23")
-            : (mouse.containsMouse ? "#8B99FF" : "#7C8CFF")
+            ? (mouse.containsMouse ? Theme.surfaceHover : Theme.surfaceMuted)
+            : (mouse.containsMouse ? "#8B99FF" : Theme.accentBright)
         border.width: muted ? 1 : 0
-        border.color: "#30384C"
+        border.color: Theme.border
 
         Text {
             id: label
             anchors.centerIn: parent
-            color: muted ? "#AAB4C6" : "white"
+            color: muted ? Theme.secondaryText : "white"
             font.pixelSize: 14
             font.weight: Font.DemiBold
         }

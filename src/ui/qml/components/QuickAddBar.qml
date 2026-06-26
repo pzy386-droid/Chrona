@@ -4,24 +4,27 @@ import QtQuick.Layouts
 
 Rectangle {
     id: root
+
     property var capacityStats: ({})
     property var aiStatus: ({})
     property string recommendationTitle: qsTr("AI 推荐")
     property string recommendationBody: qsTr("14:00 - 15:30 适合高认知学习")
     property string recommendationDelta: "+18%"
+
     signal addRequested(string text)
     signal imagePreviewRequested(string fileUrl)
     signal recommendationRequested()
     signal aiConfigRequested()
+
     readonly property bool compact: width < 1020
     readonly property bool dense: width < 860
 
     height: dense ? 96 : 116
     radius: 12
-    color: "#161A23"
+    color: Theme.surface
     clip: true
     border.width: 1
-    border.color: dropArea.containsDrag ? "#7C8CFF" : "#252B3A"
+    border.color: dropArea.containsDrag ? Theme.accentBright : Theme.surfaceHover
 
     Behavior on border.color { ColorAnimation { duration: 160 } }
 
@@ -45,11 +48,14 @@ Rectangle {
             Layout.preferredWidth: root.compact ? 218 : 260
             Layout.fillHeight: true
             radius: 10
-            color: "#10141C"
+            color: recommendationMouse.containsMouse ? Theme.surfaceHover : Theme.surface
             border.width: 1
-            border.color: "#30384C"
+            border.color: recommendationMouse.containsMouse ? Theme.border : Theme.border
+            Behavior on color { ColorAnimation { duration: 160 } }
+            Behavior on border.color { ColorAnimation { duration: 160 } }
 
             MouseArea {
+                id: recommendationMouse
                 anchors.fill: parent
                 hoverEnabled: true
                 cursorShape: Qt.PointingHandCursor
@@ -65,7 +71,7 @@ Rectangle {
                     Layout.preferredWidth: 38
                     Layout.preferredHeight: 38
                     radius: 12
-                    color: "#202638"
+                    color: Theme.surfaceHover
 
                     Text {
                         anchors.centerIn: parent
@@ -87,7 +93,7 @@ Rectangle {
                         Text {
                             Layout.fillWidth: true
                             text: root.recommendationTitle
-                            color: "#E6EAF2"
+                            color: Theme.primaryText
                             font.pixelSize: 13
                             font.weight: Font.DemiBold
                             elide: Text.ElideRight
@@ -104,7 +110,7 @@ Rectangle {
                     Text {
                         Layout.fillWidth: true
                         text: root.recommendationBody
-                        color: "#9AA4B2"
+                        color: Theme.secondaryText
                         font.pixelSize: 11
                         elide: Text.ElideRight
                     }
@@ -117,9 +123,9 @@ Rectangle {
             Layout.fillHeight: true
             Layout.minimumWidth: root.dense ? 320 : 270
             radius: 10
-            color: "#10141C"
+            color: Theme.surface
             border.width: 1
-            border.color: "#252B3A"
+            border.color: Theme.surfaceHover
 
             RowLayout {
                 anchors.fill: parent
@@ -130,7 +136,7 @@ Rectangle {
                 Text {
                     id: aiBadge
                     text: "AI"
-                    color: root.aiStatus.configured ? "#7C8CFF" : "#8C96AA"
+                    color: root.aiStatus.configured ? Theme.accentBright : Theme.secondaryText
                     font.pixelSize: 14
                     font.weight: Font.Bold
 
@@ -146,9 +152,9 @@ Rectangle {
                     id: aiStatusText
                     visible: !root.compact
                     text: root.aiStatus.label || qsTr("本地规则")
-                    color: root.aiStatus.configured ? "#A9F0C9" : "#8C96AA"
+                    color: root.aiStatus.configured ? Theme.success : Theme.secondaryText
                     font.pixelSize: 10
-                    Layout.maximumWidth: 86
+                    Layout.maximumWidth: 92
                     elide: Text.ElideRight
 
                     MouseArea {
@@ -163,8 +169,8 @@ Rectangle {
                     id: input
                     Layout.fillWidth: true
                     placeholderText: qsTr("例如：明天下午两点写高数作业")
-                    color: "#E6EAF2"
-                    placeholderTextColor: "#667187"
+                    color: Theme.primaryText
+                    placeholderTextColor: Theme.mutedText
                     font.pixelSize: 14
                     background: Item {}
                     onAccepted: {
@@ -193,9 +199,9 @@ Rectangle {
             Layout.preferredWidth: 188
             Layout.fillHeight: true
             radius: 10
-            color: dropArea.containsDrag ? "#202842" : "#10141C"
+            color: dropArea.containsDrag ? Theme.infoSurface : Theme.surface
             border.width: 1
-            border.color: dropArea.containsDrag ? "#7C8CFF" : "#252B3A"
+            border.color: dropArea.containsDrag ? Theme.accentBright : Theme.surfaceHover
 
             Column {
                 anchors.centerIn: parent
@@ -204,7 +210,7 @@ Rectangle {
                 Text {
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: qsTr("拖拽截图识别")
-                    color: "#E6EAF2"
+                    color: Theme.primaryText
                     font.pixelSize: 13
                     font.weight: Font.DemiBold
                 }
@@ -213,7 +219,7 @@ Rectangle {
                     width: parent.parent.width - 20
                     anchors.horizontalCenter: parent.horizontalCenter
                     text: qsTr("课程表 / 作业通知 / 考试安排")
-                    color: "#8C96AA"
+                    color: Theme.secondaryText
                     font.pixelSize: 10
                     horizontalAlignment: Text.AlignHCenter
                     elide: Text.ElideRight
@@ -226,7 +232,7 @@ Rectangle {
             Layout.preferredWidth: root.compact ? 142 : 164
             Layout.fillHeight: true
             radius: 10
-            color: "#10141C"
+            color: Theme.surface
             clip: true
 
             ColumnLayout {
@@ -240,7 +246,7 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     text: root.capacityStats.message || qsTr("学习容量健康")
-                    color: root.capacityStats.overloaded ? "#FFB09B" : "#A9F0C9"
+                    color: root.capacityStats.overloaded ? Theme.error : Theme.success
                     font.pixelSize: 11
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
@@ -248,16 +254,18 @@ Rectangle {
 
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("今日已排 %1 分钟").arg(root.capacityStats.todayScheduledMinutes || 0)
-                    color: "#9AA4B2"
+                    text: qsTr("当日已排 %1 分钟").arg(root.capacityStats.todayScheduledMinutes || 0)
+                    color: Theme.secondaryText
                     font.pixelSize: 10
                     elide: Text.ElideRight
                 }
 
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("本周负载 %1 小时").arg(Math.round((root.capacityStats.weekScheduledMinutes || 0) / 60))
-                    color: "#9AA4B2"
+                    text: qsTr("本周 %1 小时 · %2%")
+                        .arg(((root.capacityStats.weekScheduledMinutes || 0) / 60).toFixed(1))
+                        .arg(root.capacityStats.weekLoadPercent || 0)
+                    color: Theme.secondaryText
                     font.pixelSize: 10
                     elide: Text.ElideRight
                 }
@@ -273,7 +281,7 @@ Rectangle {
         implicitWidth: 76
         height: 38
         radius: 8
-        color: mouse.containsMouse ? "#8B99FF" : "#7C8CFF"
+        color: mouse.containsMouse ? "#8B99FF" : Theme.accentBright
         Behavior on color { ColorAnimation { duration: 140 } }
 
         Text {

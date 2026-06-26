@@ -200,7 +200,7 @@ bool BackupService::importFromFile(const QString& filePath) const
         return false;
     }
     for (const TableSpec& spec : tableSpecs()) {
-        if (spec.jsonKey == QStringLiteral("deadlineReminders") && backupSchemaVersion < 4
+        if (spec.jsonKey == QStringLiteral("deadlineReminders") && backupSchemaVersion < 6
             && root.value(spec.jsonKey).isUndefined()) {
             root.insert(spec.jsonKey, QJsonArray());
         }
