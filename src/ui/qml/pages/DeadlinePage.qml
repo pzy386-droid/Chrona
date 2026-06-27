@@ -5,11 +5,19 @@ import Chrona
 
 Rectangle {
     id: root
-    color: "#0F1117"
+    color: Theme.appBackground
 
     property int filterIndex: 0
     property var reminders: []
     property string statusText: ""
+    readonly property color ddlAccent: "#F59E0B"
+    readonly property color ddlAccentHover: "#FBBF24"
+    readonly property color ddlAccentText: Theme.dark ? "#FFD58A" : "#92400E"
+    readonly property color ddlAccentSurface: Theme.dark ? "#2A2114" : "#FFF7E6"
+    readonly property color ddlAccentBorder: "#F59E0B"
+    readonly property color dangerText: Theme.dark ? "#FFB4B4" : "#B42318"
+    readonly property color dangerSurface: Theme.dark ? "#3A1517" : "#FDEDEA"
+    readonly property color dangerBorder: Theme.dark ? "#EF4444" : "#DE7565"
 
     function refresh() {
         var source = ScheduleService.deadlineReminders
@@ -68,7 +76,7 @@ Rectangle {
                 Text {
                     Layout.fillWidth: true
                     text: qsTr("DDL 提醒中心")
-                    color: "#FFFFFF"
+                    color: Theme.strongText
                     font.pixelSize: 24
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
@@ -79,7 +87,7 @@ Rectangle {
                     text: ScheduleService.urgentDeadlineCount > 0
                           ? qsTr("%1 个截止事项需要留意").arg(ScheduleService.urgentDeadlineCount)
                           : qsTr("暂无临近截止提醒")
-                    color: ScheduleService.urgentDeadlineCount > 0 ? "#FFD58A" : "#8F9AB0"
+                    color: ScheduleService.urgentDeadlineCount > 0 ? root.ddlAccentText : Theme.secondaryText
                     font.pixelSize: 12
                     elide: Text.ElideRight
                 }
@@ -93,14 +101,14 @@ Rectangle {
                         Layout.preferredWidth: 88
                         Layout.preferredHeight: 36
                         radius: 8
-                        color: root.filterIndex === index ? "#2A2114" : "#161B22"
+                        color: root.filterIndex === index ? root.ddlAccentSurface : Theme.surfaceElevated
                         border.width: 1
-                        border.color: root.filterIndex === index ? "#F59E0B" : "#2A3140"
+                        border.color: root.filterIndex === index ? root.ddlAccentBorder : Theme.border
 
                         Text {
                             anchors.centerIn: parent
                             text: modelData
-                            color: root.filterIndex === index ? "#FFD58A" : "#A6B0C3"
+                            color: root.filterIndex === index ? root.ddlAccentText : Theme.secondaryText
                             font.pixelSize: 13
                             font.weight: Font.DemiBold
                         }
@@ -123,9 +131,9 @@ Rectangle {
             Layout.fillWidth: true
             Layout.preferredHeight: 142
             radius: 8
-            color: "#161B22"
+            color: Theme.surface
             border.width: 1
-            border.color: "#2A3140"
+            border.color: Theme.border
 
             ColumnLayout {
                 anchors.fill: parent
@@ -165,7 +173,7 @@ Rectangle {
                         editable: true
                         contentItem: TextInput {
                             text: remindDays.textFromValue(remindDays.value, remindDays.locale)
-                            color: "#E6EAF2"
+                            color: Theme.primaryText
                             font.pixelSize: 13
                             horizontalAlignment: Qt.AlignHCenter
                             verticalAlignment: Qt.AlignVCenter
@@ -173,9 +181,9 @@ Rectangle {
                         }
                         background: Rectangle {
                             radius: 8
-                            color: "#10141C"
+                            color: Theme.inputBackground
                             border.width: 1
-                            border.color: "#30384C"
+                            border.color: Theme.border
                         }
                     }
 
@@ -183,7 +191,7 @@ Rectangle {
                         Layout.preferredWidth: 82
                         Layout.preferredHeight: 38
                         radius: 8
-                        color: addMouse.containsMouse ? "#FBBF24" : "#F59E0B"
+                        color: addMouse.containsMouse ? root.ddlAccentHover : root.ddlAccent
 
                         Text {
                             anchors.centerIn: parent
@@ -216,7 +224,7 @@ Rectangle {
                     Text {
                         Layout.preferredWidth: 220
                         text: root.statusText
-                        color: "#8F9AB0"
+                        color: Theme.secondaryText
                         font.pixelSize: 12
                         elide: Text.ElideRight
                     }
@@ -237,9 +245,9 @@ Rectangle {
                 width: ListView.view.width
                 height: 112
                 radius: 8
-                color: hover.hovered ? "#1B2130" : "#131821"
+                color: hover.hovered ? Theme.surfaceHover : Theme.surface
                 border.width: 1
-                border.color: modelData.overdue ? "#EF4444" : modelData.reminderDue ? "#F59E0B" : "#283142"
+                border.color: modelData.overdue ? root.dangerBorder : modelData.reminderDue ? root.ddlAccentBorder : Theme.border
 
                 RowLayout {
                     anchors.fill: parent
@@ -250,7 +258,7 @@ Rectangle {
                         Layout.preferredWidth: 5
                         Layout.fillHeight: true
                         radius: 3
-                        color: modelData.overdue ? "#EF4444" : modelData.categoryColor
+                        color: modelData.overdue ? root.dangerBorder : modelData.categoryColor
                     }
 
                     ColumnLayout {
@@ -264,7 +272,7 @@ Rectangle {
                             Text {
                                 Layout.fillWidth: true
                                 text: modelData.title
-                                color: modelData.status === 1 ? "#8F9AB0" : "#FFFFFF"
+                                color: modelData.status === 1 ? Theme.secondaryText : Theme.strongText
                                 font.pixelSize: 16
                                 font.weight: Font.DemiBold
                                 elide: Text.ElideRight
@@ -274,15 +282,15 @@ Rectangle {
                                 Layout.preferredWidth: Math.max(68, urgencyText.implicitWidth + 18)
                                 Layout.preferredHeight: 24
                                 radius: 8
-                                color: modelData.overdue ? "#3A1517" : modelData.reminderDue ? "#3A2612" : "#182033"
+                                color: modelData.overdue ? root.dangerSurface : modelData.reminderDue ? root.ddlAccentSurface : Theme.surfaceMuted
                                 border.width: 1
-                                border.color: modelData.overdue ? "#EF4444" : modelData.reminderDue ? "#F59E0B" : "#30384C"
+                                border.color: modelData.overdue ? root.dangerBorder : modelData.reminderDue ? root.ddlAccentBorder : Theme.border
 
                                 Text {
                                     id: urgencyText
                                     anchors.centerIn: parent
                                     text: modelData.overdue ? qsTr("已逾期") : modelData.daysLeft === 0 ? qsTr("今天") : qsTr("%1 天").arg(modelData.daysLeft)
-                                    color: modelData.overdue ? "#FFB4B4" : modelData.reminderDue ? "#FFD58A" : "#B9C2D2"
+                                    color: modelData.overdue ? root.dangerText : modelData.reminderDue ? root.ddlAccentText : Theme.secondaryText
                                     font.pixelSize: 12
                                     font.weight: Font.DemiBold
                                 }
@@ -292,7 +300,7 @@ Rectangle {
                         Text {
                             Layout.fillWidth: true
                             text: modelData.dueText + "  ·  " + modelData.categoryName + "  ·  " + qsTr("提前 %1 天提醒").arg(modelData.remindDaysBefore)
-                            color: "#9AA4B2"
+                            color: Theme.secondaryText
                             font.pixelSize: 12
                             elide: Text.ElideRight
                         }
@@ -301,7 +309,7 @@ Rectangle {
                             Layout.fillWidth: true
                             text: modelData.notes
                             visible: modelData.notes.length > 0
-                            color: "#6F7A8E"
+                            color: Theme.mutedText
                             font.pixelSize: 12
                             elide: Text.ElideRight
                         }
@@ -313,26 +321,26 @@ Rectangle {
                         ActionButton {
                             visible: modelData.status === 0
                             label: qsTr("完成")
-                            colorValue: "#1E3A2F"
-                            borderValue: "#2F8F62"
-                            textValue: "#A9F0C9"
+                            colorValue: Theme.successSurface
+                            borderValue: Theme.successBorder
+                            textValue: Theme.success
                             onClicked: ScheduleService.completeDeadlineReminder(modelData.id)
                         }
 
                         ActionButton {
                             visible: modelData.status === 0
                             label: qsTr("归档")
-                            colorValue: "#202638"
-                            borderValue: "#3A465D"
-                            textValue: "#C8D0DE"
+                            colorValue: Theme.surfaceMuted
+                            borderValue: Theme.border
+                            textValue: Theme.primaryText
                             onClicked: ScheduleService.archiveDeadlineReminder(modelData.id)
                         }
 
                         ActionButton {
                             label: qsTr("删除")
-                            colorValue: "#2A1820"
-                            borderValue: "#6F2D3D"
-                            textValue: "#FFB4C2"
+                            colorValue: Theme.dangerSurface
+                            borderValue: Theme.dangerBorder
+                            textValue: Theme.error
                             onClicked: ScheduleService.deleteDeadlineReminder(modelData.id)
                         }
                     }
@@ -347,14 +355,14 @@ Rectangle {
                 width: 320
                 height: 72
                 radius: 8
-                color: "#131821"
+                color: Theme.surface
                 border.width: 1
-                border.color: "#2A3140"
+                border.color: Theme.border
 
                 Text {
                     anchors.centerIn: parent
                     text: qsTr("这里还没有 DDL")
-                    color: "#8F9AB0"
+                    color: Theme.secondaryText
                     font.pixelSize: 14
                 }
             }
@@ -363,25 +371,25 @@ Rectangle {
 
     component Field: TextField {
         id: field
-        color: "#E6EAF2"
-        placeholderTextColor: "#667187"
+        color: Theme.primaryText
+        placeholderTextColor: Theme.mutedText
         font.pixelSize: 14
         selectedTextColor: "#111827"
-        selectionColor: "#F59E0B"
+        selectionColor: root.ddlAccent
         background: Rectangle {
             radius: 8
-            color: "#10141C"
+            color: Theme.inputBackground
             border.width: 1
-            border.color: field.activeFocus ? "#F59E0B" : "#30384C"
+            border.color: field.activeFocus ? root.ddlAccentBorder : Theme.border
         }
     }
 
     component ActionButton: Rectangle {
         id: button
         property string label: ""
-        property color colorValue: "#202638"
-        property color borderValue: "#3A465D"
-        property color textValue: "#C8D0DE"
+        property color colorValue: Theme.surfaceMuted
+        property color borderValue: Theme.border
+        property color textValue: Theme.primaryText
         signal clicked()
 
         Layout.preferredWidth: 56

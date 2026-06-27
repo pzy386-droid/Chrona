@@ -53,7 +53,7 @@ Rectangle {
 
             IconButton {
                 iconText: root.collapsed ? ">" : "<"
-                tooltip: qsTr("鏀惰捣渚ф爮")
+                tooltip: qsTr("收起侧栏")
                 onClicked: root.collapsed = !root.collapsed
             }
         }
@@ -70,12 +70,12 @@ Rectangle {
 
             Repeater {
                 model: [
-                    {label: qsTr("AI 浠婃棩璁″垝"), mark: "#8B99FF", action: "dailyPlan"},
+                    {label: qsTr("AI 今日计划"), mark: "#8B99FF", action: "dailyPlan"},
                     {label: qsTr("时间线"), mark: Theme.accent, action: "timeline"},
                     {label: qsTr("DDL 提醒"), mark: "#F59E0B", action: "deadlines"},
-                    {label: qsTr("鏈堝巻鎬昏"), mark: "#A78BFA", action: "month"},
-                    {label: qsTr("褰撳墠涓撴敞"), mark: "#00D68F", action: "focus"},
-                    {label: qsTr("璇剧▼"), mark: "#FFB547", action: "courses"}
+                    {label: qsTr("月历总览"), mark: "#A78BFA", action: "month"},
+                    {label: qsTr("当前专注"), mark: "#00D68F", action: "focus"},
+                    {label: qsTr("课程"), mark: "#FFB547", action: "courses"}
                 ]
 
                 delegate: Rectangle {
@@ -158,7 +158,7 @@ Rectangle {
         Text {
             visible: !root.collapsed
             Layout.fillWidth: true
-            text: qsTr("褰撴棩鏃ョ▼")
+            text: qsTr("当日日程")
             color: Theme.mutedText
             font.pixelSize: 12
             font.bold: true
@@ -221,7 +221,7 @@ Rectangle {
 
                             Text {
                                 anchors.centerIn: parent
-                                text: modelData.isEvent ? qsTr("鏃ョ▼") : qsTr("浠诲姟")
+                                text: modelData.isEvent ? qsTr("日程") : qsTr("任务")
                                 color: modelData.color || Theme.secondaryText
                                 font.pixelSize: 9
                                 font.weight: Font.DemiBold
@@ -242,7 +242,7 @@ Rectangle {
             Text {
                 anchors.centerIn: parent
                 visible: taskList.count === 0
-                text: qsTr("褰撳ぉ鏆傛棤鏃ョ▼")
+                text: qsTr("当天暂无日程")
                 color: Theme.mutedText
                 font.pixelSize: 12
             }
@@ -367,7 +367,7 @@ Rectangle {
                     visible: !root.collapsed
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    text: qsTr("缁撴潫浠婃棩")
+                    text: qsTr("结束今日")
                     color: finishDayMouse.pressed ? Theme.secondaryText : Theme.strongText
                     font.pixelSize: 15
                     font.weight: Font.DemiBold

@@ -502,6 +502,7 @@ bool migrateToV6(QSqlDatabase db)
             && setUserVersion(db, 6);
     });
 }
+}
 
 bool Migrations::run(QSqlDatabase db)
 {

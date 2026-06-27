@@ -3,6 +3,7 @@ import QtQuick.Controls
 import QtQuick.Layouts
 import Chrona
 import "./panels"
+import "./pages"
 
 ApplicationWindow {
     id: window
@@ -46,7 +47,10 @@ ApplicationWindow {
     }
 
     Rectangle {
+        id: appShell
         anchors.fill: parent
+        visible: ScheduleService.firstLoginCompleted
+        enabled: visible
         color: Theme.appBackground
 
         RowLayout {
@@ -162,6 +166,16 @@ ApplicationWindow {
             id: eveningReviewOverlay
             anchors.fill: parent
             visible: false
+        }
+    }
+
+    LoginPage {
+        anchors.fill: parent
+        visible: !ScheduleService.firstLoginCompleted
+        enabled: visible
+        onLoginCompleted: {
+            window.currentPage = "timeline"
+            window.detailOpen = true
         }
     }
 }

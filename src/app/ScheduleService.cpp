@@ -466,6 +466,16 @@ bool ScheduleService::demoModeEnabled() const
     return m_settings.value(QStringLiteral("demoModeEnabled"), QStringLiteral("false")) == QStringLiteral("true");
 }
 
+bool ScheduleService::firstLoginCompleted() const
+{
+    return m_settings.value(QStringLiteral("firstLoginCompleted"), QStringLiteral("false")) == QStringLiteral("true");
+}
+
+QString ScheduleService::userName() const
+{
+    return m_settings.value(QStringLiteral("userName"), QString());
+}
+
 QString ScheduleService::persistenceError() const
 {
     return m_persistenceError;
@@ -2541,6 +2551,31 @@ bool ScheduleService::setDemoModeEnabled(bool enabled)
     return ok;
 }
 
+QVariantMap ScheduleService::completeFirstLogin(const QString& name)
+{
+    const QString trimmedName = name.trimmed();
+    if (trimmedName.isEmpty()) {
+        return {{"ok", false}, {"message", QObject::tr("请输入昵称")}};
+    }
+
+    if (!m_settings.setValue(QStringLiteral("userName"), trimmedName)
+        || !m_settings.setValue(QStringLiteral("firstLoginCompleted"), QStringLiteral("true"))) {
+        return {{"ok", false}, {"message", QObject::tr("登录信息保存失败")}};
+    }
+
+    emit loginStateChanged();
+    return {{"ok", true}, {"message", QObject::tr("欢迎回来，%1").arg(trimmedName)}};
+}
+
+bool ScheduleService::signOutForLogin()
+{
+    const bool ok = m_settings.setValue(QStringLiteral("firstLoginCompleted"), QStringLiteral("false"));
+    if (ok) {
+        emit loginStateChanged();
+    }
+    return ok;
+}
+
 QVariantMap ScheduleService::exportData(const QString& filePath)
 {
     if (!m_backup.exportToFile(filePath)) {
@@ -2913,7 +2948,7 @@ QVariantMap ScheduleService::eventToDetailMap(const TimelineItem& item) const
         {"notes", QString()},
         {"deadlineText", deadlineText(item.end)},
         {"priority", 1},
-        {"categoryName", item.subtitle == QObject::tr("璇剧▼ / 鍥哄畾鏃堕棿") ? QObject::tr("璇剧▼") : item.subtitle},
+        {"categoryName", item.subtitle == QObject::tr("课程 / 固定时间") ? QObject::tr("课程") : item.subtitle},
         {"categoryColor", item.color},
         {"preferredStudyTime", QStringLiteral("evening")},
         {"deadlineType", 1},

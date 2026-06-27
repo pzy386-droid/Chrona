@@ -31,6 +31,8 @@ class ScheduleService : public QObject {
     Q_PROPERTY(QVariantList scheduleIssues READ scheduleIssues NOTIFY dataChanged)
     Q_PROPERTY(QVariantList dailyItems READ dailyItems NOTIFY selectedTaskChanged)
     Q_PROPERTY(bool demoModeEnabled READ demoModeEnabled NOTIFY dataChanged)
+    Q_PROPERTY(bool firstLoginCompleted READ firstLoginCompleted NOTIFY loginStateChanged)
+    Q_PROPERTY(QString userName READ userName NOTIFY loginStateChanged)
     Q_PROPERTY(QString persistenceError READ persistenceError NOTIFY dataChanged)
     Q_PROPERTY(QString selectedDateText READ selectedDateText NOTIFY selectedDateChanged)
 
@@ -52,6 +54,8 @@ public:
     QVariantList scheduleIssues() const;
     QVariantList dailyItems() const;
     bool demoModeEnabled() const;
+    bool firstLoginCompleted() const;
+    QString userName() const;
     QString persistenceError() const;
     QString selectedDateText() const;
 
@@ -103,6 +107,8 @@ public:
     Q_INVOKABLE QVariantMap applyScheduleSuggestion(const QVariantMap& suggestion);
     Q_INVOKABLE QVariantMap previewImageTask(const QString& fileUrlOrPath);
     Q_INVOKABLE QVariantMap eveningReview() const;
+    Q_INVOKABLE QVariantMap completeFirstLogin(const QString& name);
+    Q_INVOKABLE bool signOutForLogin();
     Q_INVOKABLE bool setDemoModeEnabled(bool enabled);
     Q_INVOKABLE QVariantMap exportData(const QString& filePath);
     Q_INVOKABLE QVariantMap importData(const QString& filePath);
@@ -111,6 +117,7 @@ signals:
     void dataChanged();
     void selectedTaskChanged();
     void selectedDateChanged();
+    void loginStateChanged();
     void taskDraftReady(const QVariantMap& result);
     void schedulePlanReady(const QString& mode, const QVariantMap& result);
 
