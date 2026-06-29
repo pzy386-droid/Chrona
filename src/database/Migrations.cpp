@@ -11,7 +11,7 @@
 #include <tuple>
 
 namespace {
-constexpr int kCurrentVersion = 6;
+constexpr int kCurrentVersion = 7;
 QString g_lastError;
 
 QString iso(const QDateTime& dateTime)
@@ -502,6 +502,27 @@ bool migrateToV6(QSqlDatabase db)
             && setUserVersion(db, 6);
     });
 }
+
+bool migrateToV7(QSqlDatabase db)
+{
+    return runInTransaction(db, [&] {
+        return execSql(db, QStringLiteral(R"SQL(
+            CREATE TABLE IF NOT EXISTS ai_memories (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              kind TEXT NOT NULL,
+              memory_key TEXT NOT NULL,
+              content TEXT NOT NULL,
+              weight REAL NOT NULL DEFAULT 1.0,
+              created_at TEXT NOT NULL,
+              updated_at TEXT NOT NULL,
+              last_used_at TEXT,
+              UNIQUE(kind, memory_key)
+            )
+        )SQL"))
+            && execSql(db, QStringLiteral("CREATE INDEX IF NOT EXISTS idx_ai_memories_weight ON ai_memories(weight DESC, updated_at DESC)"))
+            && setUserVersion(db, 7);
+    });
+}
 }
 
 bool Migrations::run(QSqlDatabase db)
@@ -537,6 +558,9 @@ bool Migrations::run(QSqlDatabase db)
         return false;
     }
     if (version < 6 && !migrateToV6(db)) {
+        return false;
+    }
+    if (version < 7 && !migrateToV7(db)) {
         return false;
     }
     return execSql(db, QStringLiteral("PRAGMA foreign_keys = ON"));

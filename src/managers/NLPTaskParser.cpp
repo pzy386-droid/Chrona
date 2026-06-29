@@ -35,6 +35,60 @@ int weekdayFromText(const QString& input)
     }
     return containsAny(input, {QStringLiteral("周末"), QStringLiteral("这个周末")}) ? 6 : 0;
 }
+
+struct TimeRangeHint {
+    QTime start;
+    QTime end;
+    bool valid = false;
+};
+
+int normalizeHourForPeriod(int hour, const QString& period)
+{
+    int normalized = qBound(0, hour, 23);
+    if (containsAny(period, {QStringLiteral("下午"), QStringLiteral("晚上"), QStringLiteral("今晚")}) && normalized < 12) {
+        normalized += 12;
+    }
+    if (period == QStringLiteral("中午") && normalized < 11) {
+        normalized += 12;
+    }
+    return qBound(0, normalized, 23);
+}
+
+QTime timeFromMatch(const QRegularExpressionMatch& match, int periodIndex, int hourIndex, int minuteIndex)
+{
+    const int hour = normalizeHourForPeriod(match.captured(hourIndex).toInt(), match.captured(periodIndex));
+    const int minute = match.captured(minuteIndex).isEmpty() ? 0 : match.captured(minuteIndex).toInt();
+    return QTime(hour, qBound(0, minute, 59));
+}
+
+TimeRangeHint resolveTimeRangeHint(const QString& input)
+{
+    const QRegularExpression rangePattern(QStringLiteral(R"((?:从)?\s*(凌晨|早上|上午|中午|下午|晚上|今晚|明早)?\s*(\d{1,2})\s*(?:点|:|：)?\s*(\d{1,2})?\s*(?:到|至|-|—|~|～)\s*(凌晨|早上|上午|中午|下午|晚上|今晚|明早)?\s*(\d{1,2})\s*(?:点|:|：)?\s*(\d{1,2})?)"));
+    const auto match = rangePattern.match(input);
+    if (!match.hasMatch()) {
+        return {};
+    }
+
+    QTime start = timeFromMatch(match, 1, 2, 3);
+    QTime end = timeFromMatch(match, 4, 5, 6);
+    if (!start.isValid() || !end.isValid()) {
+        return {};
+    }
+
+    if (end <= start && match.captured(4).isEmpty()) {
+        const QString startPeriod = match.captured(1);
+        const int rawEndHour = match.captured(5).toInt();
+        if (containsAny(startPeriod, {QStringLiteral("下午"), QStringLiteral("晚上"), QStringLiteral("今晚")}) && rawEndHour < 12) {
+            end = QTime(qBound(0, rawEndHour + 12, 23), end.minute());
+        }
+    }
+
+    if (end <= start) {
+        return {};
+    }
+    return {start, end, true};
+}
+
 }
 
 ParsedTaskDraft NLPTaskParser::parse(const QString& input, const QDateTime& now) const
@@ -47,14 +101,21 @@ ParsedTaskDraft NLPTaskParser::parse(const QString& input, const QDateTime& now)
     }
 
     const QDate date = resolveRelativeDate(text, now.date());
-    const QTime time = resolveTime(text);
+    const TimeRangeHint rangeHint = resolveTimeRangeHint(text);
+    const QTime time = rangeHint.valid ? rangeHint.start : resolveTime(text);
     draft.deadline = QDateTime(date, time);
-    draft.estimatedMinutes = resolveDurationMinutes(text);
+    draft.estimatedMinutes = rangeHint.valid
+        ? qMax(30, static_cast<int>(rangeHint.start.secsTo(rangeHint.end) / 60))
+        : resolveDurationMinutes(text);
     draft.priority = resolvePriority(text);
     draft.categoryName = resolveCategory(text);
     draft.preferredStudyTime = time.hour() < 12 ? QStringLiteral("morning") : time.hour() < 18 ? QStringLiteral("afternoon") : QStringLiteral("evening");
-    draft.hasTimeAnchor = hasSchedulingAnchor(text);
-    if (draft.hasTimeAnchor) {
+    draft.hasTimeAnchor = rangeHint.valid || hasSchedulingAnchor(text);
+    if (rangeHint.valid) {
+        draft.scheduledStart = QDateTime(date, rangeHint.start);
+        draft.scheduledEnd = QDateTime(date, rangeHint.end);
+        draft.deadline = draft.scheduledEnd;
+    } else if (draft.hasTimeAnchor) {
         draft.scheduledStart = QDateTime(date, time);
         draft.scheduledEnd = draft.scheduledStart.addSecs(draft.estimatedMinutes * 60);
         draft.deadline = draft.scheduledEnd;
@@ -73,6 +134,9 @@ QDate NLPTaskParser::resolveRelativeDate(const QString& input, const QDate& toda
     }
     if (containsAny(input, {QStringLiteral("明早"), QStringLiteral("明天")})) {
         return today.addDays(1);
+    }
+    if (input.contains(QStringLiteral("大后天"))) {
+        return today.addDays(3);
     }
     if (input.contains(QStringLiteral("后天"))) {
         return today.addDays(2);
@@ -198,7 +262,7 @@ QString NLPTaskParser::resolveCategory(const QString& input) const
     if (input.contains(QStringLiteral("作业"))) {
         return QObject::tr("作业");
     }
-    if (containsAny(input, {QStringLiteral("吃饭"), QStringLiteral("午饭"), QStringLiteral("晚饭")})) {
+    if (containsAny(input, {QStringLiteral("吃饭"), QStringLiteral("午饭"), QStringLiteral("晚饭"), QStringLiteral("飞机"), QStringLiteral("赶飞机")})) {
         return QObject::tr("生活");
     }
     return QObject::tr("学习");

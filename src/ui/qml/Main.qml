@@ -13,36 +13,17 @@ ApplicationWindow {
     title: "Chrona"
     color: Theme.appBackground
 
-    property bool detailOpen: true
+    property bool detailOpen: false
     property string currentPage: "timeline"
-
-    function showTodayTimeline(mode, callback) {
-        ScheduleService.setSelectedDate(Qt.formatDate(new Date(), "yyyy-MM-dd"))
-        window.currentPage = mode
-        Qt.callLater(callback)
-    }
-
-    function scrollToFocusBlock() {
-        showTodayTimeline("focus", function() {
-            if (timelinePage && typeof timelinePage.scrollToFocusBlock === "function") {
-                timelinePage.scrollToFocusBlock()
-            }
-        })
-    }
-
-    function scrollToCourses() {
-        showTodayTimeline("courses", function() {
-            if (timelinePage && typeof timelinePage.scrollToCourses === "function") {
-                timelinePage.scrollToCourses()
-            }
-        })
-    }
 
     Connections {
         target: ScheduleService
 
         function onSelectedTaskChanged() {
-            window.detailOpen = true
+            Qt.callLater(function() {
+                var detail = ScheduleService.selectedDetail || ({})
+                window.detailOpen = Number(detail.id || 0) > 0
+            })
         }
     }
 
@@ -62,8 +43,6 @@ ApplicationWindow {
                 Layout.fillHeight: true
                 Layout.preferredWidth: collapsed ? 76 : 248
                 currentPage: window.currentPage
-                onFocusRequested: window.scrollToFocusBlock()
-                onCoursesRequested: window.scrollToCourses()
                 onNavigateRequested: function(page) {
                     window.currentPage = page
                     if (page === "month" || page === "deadlines") {
@@ -83,7 +62,7 @@ ApplicationWindow {
             StackLayout {
                 Layout.fillWidth: true
                 Layout.fillHeight: true
-                currentIndex: window.currentPage === "deadlines" ? 2 : (window.currentPage === "month" ? 1 : 0)
+                currentIndex: window.currentPage === "month" ? 1 : window.currentPage === "deadlines" ? 2 : window.currentPage === "insights" ? 3 : window.currentPage === "memory" ? 4 : 0
 
                 TimelinePage {
                     id: timelinePage
@@ -104,14 +83,22 @@ ApplicationWindow {
                 DeadlinePage {
                     id: deadlinePage
                 }
+
+                InsightsPage {
+                    id: insightsPage
+                }
+
+                MemoryPage {
+                    id: memoryPage
+                }
             }
 
             TaskDetailPanel {
                 id: detailPanel
                 Layout.fillHeight: true
-                Layout.preferredWidth: window.detailOpen && window.currentPage !== "month" ? 332 : 0
+                Layout.preferredWidth: window.detailOpen && window.currentPage === "timeline" ? 332 : 0
                 clip: true
-                opacity: window.detailOpen && window.currentPage !== "month" ? 1 : 0
+                opacity: window.detailOpen && window.currentPage === "timeline" ? 1 : 0
                 task: ScheduleService.selectedDetail
                 readOnly: ScheduleService.selectedDateText !== Qt.formatDate(new Date(), "yyyy-MM-dd")
                 onCloseRequested: window.detailOpen = false
@@ -127,7 +114,7 @@ ApplicationWindow {
         }
 
         Rectangle {
-            visible: !window.detailOpen && window.currentPage !== "month"
+            visible: !window.detailOpen && window.currentPage === "timeline"
             anchors.right: parent.right
             anchors.verticalCenter: parent.verticalCenter
             anchors.rightMargin: 16
@@ -160,6 +147,11 @@ ApplicationWindow {
             id: dailyPlanOverlay
             anchors.fill: parent
             visible: false
+            onExecutionFinished: function(ok, message) {
+                if (timelinePage && typeof timelinePage.showOperationMessage === "function") {
+                    timelinePage.showOperationMessage(message, ok)
+                }
+            }
         }
 
         EveningReviewOverlay {

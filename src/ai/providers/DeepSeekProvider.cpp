@@ -196,7 +196,7 @@ QFuture<AIParseResult> DeepSeekProvider::parseNaturalLanguageTask(const QString&
             "You are Chrona AI, the natural-language planner inside an AI-native study scheduling desktop app. "
             "The user message is a compact JSON object with currentLocalDateTime and input. "
             "You must understand Chinese and English natural language semantically, not by keyword matching. "
-            "Return strict JSON only, no markdown. Required keys: "
+            "Return strict JSON only, no markdown. If the input contains multiple independent tasks, return a top-level tasks array and put one complete task object per item; also keep the first task fields at top level for compatibility. Required keys for each task object: "
             "title:string, notes:string, deadline:string, estimatedMinutes:number, priority:number, "
             "categoryName:string, preferredStudyTime:string, hasTimeAnchor:boolean, scheduledStart:string, "
             "scheduledEnd:string, planningMode:string, confidence:number, explanation:string. "
@@ -211,11 +211,13 @@ QFuture<AIParseResult> DeepSeekProvider::parseNaturalLanguageTask(const QString&
             "Examples: '明天中午吃饭' => direct_time_block, start tomorrow 12:00, duration 60 minutes, categoryName='生活'. "
             "'下周三交数据库实验报告' => task_deadline, deadline next Wednesday 23:59, no direct time block. "
             "'后天早上早读' => direct_time_block, start current date + 2 days at 08:00, duration 60 minutes. "
+            "If the user gives an explicit time range such as 从中午12:00到晚上22:00 or 12:00-22:00, estimatedMinutes must equal the whole range length and scheduledEnd must be the explicit end time. "
             "If the input only says noon/afternoon/evening without a minute, infer a reasonable anchor time: "
             "noon=12:00, afternoon=14:00, evening=20:00, morning=08:00. "
             "priority must be an integer only: 0 low, 1 medium, or 2 high. "
+            "Do not infer high priority from ordinary study verbs like 复习, 学习, 阅读, 练习, 背单词, 写作业, or 上课; use priority=1 unless the user explicitly says urgent/紧急/很急/DDL/deadline/截止/考试/高优先级/必须今天完成/明天交. "
             "preferredStudyTime must be morning, afternoon, evening, or any. "
-            "Do not create multiple tasks unless the input explicitly contains multiple independent tasks. "
+            "Create multiple task objects when the user explicitly gives multiple independent requirements in one sentence, for example separated by commas, semicolons, “然后”, “还有”, or separate date/time phrases. "
             "Do not claim database writes.");
 
         const QJsonObject userPayload{
@@ -256,9 +258,10 @@ QFuture<AISuggestionResult> DeepSeekProvider::suggestScheduleChanges(const Sched
             "Never claim to have changed data. Return strict JSON only with keys title, summary, riskLevel, currentFocus, "
             "reasons, suggestions, providerLabel. Keep all Chinese copy short and product-like. reasons is a string array "
             "with at most 3 items. suggestions is an array with at most 3 items; each item has title, description, impact, "
-            "actionType, taskId, proposedDeadline. Allowed actionType values are reschedule, extend_deadline, review_task, focus_buffer. "
+            "actionType, taskId, proposedDeadline, blockId, preferredMinutes, breakMinutes. Allowed actionType values are reschedule, extend_deadline, review_task, focus_buffer, split_block. Use split_block when the selected time block is too long and should be divided into focused chunks. "
             "For effortLevel=2, explain why a one-hour buffer before and after the selected block reduces context switching. "
             "If deadlineType=1 or a block is locked, treat it as immovable and recommend a different time instead of moving it. "
+            "Use dynamicPriorityScore as the local scheduler urgency signal. Use supplied memories only as soft preferences, never as facts that override current tasks. "
             "Use only supplied facts; do not invent tasks, events, or times. No markdown.");
         const QString userPrompt = QStringLiteral("Mode: %1\nContext JSON: %2")
             .arg(data.value(QStringLiteral("mode")).toString(),

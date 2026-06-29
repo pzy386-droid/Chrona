@@ -30,7 +30,7 @@ bool AppController::initialize(QQmlApplicationEngine* engine)
     m_aiService = std::make_unique<DeepSeekProvider>(deepSeekKey);
     m_scheduleService = std::make_unique<ScheduleService>(
         TaskRepository(db), CalendarRepository(db), DeadlineReminderRepository(db), TimeBlockRepository(db),
-        StudyFrameRepository(db), SettingsRepository(db), BackupService(db), m_aiService.get());
+        StudyFrameRepository(db), SettingsRepository(db), MemoryRepository(db), BackupService(db), m_aiService.get());
 
     engine->rootContext()->setContextProperty(QStringLiteral("LocaleService"), m_localeService.get());
     engine->rootContext()->setContextProperty(QStringLiteral("ThemeService"), m_themeService.get());

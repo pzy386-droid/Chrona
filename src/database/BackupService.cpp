@@ -32,7 +32,8 @@ const QVector<TableSpec>& tableSpecs()
         {QStringLiteral("deadline_reminders"), QStringLiteral("deadlineReminders")},
         {QStringLiteral("time_blocks"), QStringLiteral("timeBlocks")},
         {QStringLiteral("study_frames"), QStringLiteral("studyFrames")},
-        {QStringLiteral("app_settings"), QStringLiteral("settings")}
+        {QStringLiteral("app_settings"), QStringLiteral("settings")},
+        {QStringLiteral("ai_memories"), QStringLiteral("aiMemories")}
     };
     return specs;
 }
@@ -205,6 +206,9 @@ bool BackupService::importFromFile(const QString& filePath) const
             root.insert(spec.jsonKey, QJsonArray());
         }
         if (!root.value(spec.jsonKey).isArray()) {
+            if (spec.table == QStringLiteral("ai_memories") && backupSchemaVersion < 6) {
+                continue;
+            }
             m_lastError = QStringLiteral("Backup is missing %1").arg(spec.jsonKey);
             return false;
         }
@@ -226,7 +230,8 @@ bool BackupService::importFromFile(const QString& filePath) const
         QStringLiteral("tasks"),
         QStringLiteral("schedule_runs"),
         QStringLiteral("categories"),
-        QStringLiteral("app_settings")
+        QStringLiteral("app_settings"),
+        QStringLiteral("ai_memories")
     };
     for (const QString& table : deleteOrder) {
         QSqlQuery remove(db);

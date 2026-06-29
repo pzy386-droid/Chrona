@@ -32,6 +32,7 @@ private slots:
     void eventLockPersists();
     void scheduleFailureKeepsPreviousState();
     void backupRoundTripPreservesCoreData();
+    void memoryRepositoryPersistsAndUpserts();
     void cascadeResizePushesOverlappingBlocks();
     void cascadeResizePreservesBlockDurations();
     void cascadeResizeSkipsFixedIntervals();
@@ -621,6 +622,22 @@ void DatabaseConsistencyTests::horizontalRelocationRejectsFullDay()
     QVERIFY(!result.ok);
     QCOMPARE(result.error, QStringLiteral("no-horizontal-space"));
     QVERIFY(result.movedBlocks.isEmpty());
+}
+
+
+void DatabaseConsistencyTests::memoryRepositoryPersistsAndUpserts()
+{
+    MemoryRepository memories(m_db);
+    QVERIFY(memories.upsert(QStringLiteral("preference"), QStringLiteral("study_time_math"),
+                            QStringLiteral("Prefers evening math study"), 1.0));
+    QVERIFY(memories.upsert(QStringLiteral("preference"), QStringLiteral("study_time_math"),
+                            QStringLiteral("Prefers focused evening math study"), 1.4));
+    QCOMPARE(memories.count(), 1);
+    const QVariantList items = memories.recent(5);
+    QCOMPARE(items.size(), 1);
+    QCOMPARE(items.first().toMap().value(QStringLiteral("content")).toString(),
+             QStringLiteral("Prefers focused evening math study"));
+    QVERIFY(items.first().toMap().value(QStringLiteral("weight")).toDouble() >= 1.4);
 }
 
 QTEST_MAIN(DatabaseConsistencyTests)

@@ -8,6 +8,7 @@
 
 #include <QSqlDatabase>
 #include <QString>
+#include <QVariantList>
 
 class SettingsRepository {
 public:
@@ -112,5 +113,17 @@ public:
 
 private:
     int ensureCategory(const QString& name) const;
+    QSqlDatabase m_db;
+};
+
+class MemoryRepository {
+public:
+    explicit MemoryRepository(QSqlDatabase db);
+    bool upsert(const QString& kind, const QString& key, const QString& content, double weight = 1.0) const;
+    QVariantList recent(int limit = 12) const;
+    int count() const;
+    bool clear() const;
+
+private:
     QSqlDatabase m_db;
 };

@@ -18,6 +18,22 @@ private slots:
         QCOMPARE(draft.estimatedMinutes, 180);
         QCOMPARE(draft.categoryName, QStringLiteral("高数"));
     }
+
+    void parsesExplicitTimeRange()
+    {
+        NLPTaskParser parser;
+        const QDateTime now(QDate(2026, 6, 27), QTime(10, 0));
+        const ParsedTaskDraft draft = parser.parse(
+            QStringLiteral("今天从中午12:00到晚上22:00复习微积分"), now);
+
+        QVERIFY(draft.valid);
+        QVERIFY(draft.hasTimeAnchor);
+        QCOMPARE(draft.scheduledStart, QDateTime(QDate(2026, 6, 27), QTime(12, 0)));
+        QCOMPARE(draft.scheduledEnd, QDateTime(QDate(2026, 6, 27), QTime(22, 0)));
+        QCOMPARE(draft.estimatedMinutes, 600);
+        QCOMPARE(static_cast<int>(draft.priority), static_cast<int>(Priority::Medium));
+    }
+
 };
 
 QTEST_MAIN(NLPTaskParserTests)

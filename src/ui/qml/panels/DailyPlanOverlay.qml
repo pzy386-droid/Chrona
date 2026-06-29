@@ -15,7 +15,11 @@ Rectangle {
     property var plan: ({})
     property var selectedSuggestion: ({})
     property bool loading: false
+    property string executionMessage: ""
+    property bool executionOk: false
     property point dragOffset: Qt.point(0, 0)
+
+    signal executionFinished(bool ok, string message)
 
     function modeKey() {
         return mode === "suggestions" ? "schedule_suggestions" : "daily_plan"
@@ -40,6 +44,8 @@ Rectangle {
             model: qsTr("Chrona AI")
         }
         selectedSuggestion = ({})
+        executionMessage = ""
+        executionOk = false
         centerPanel()
         ScheduleService.requestSchedulePlan(pendingMode)
     }
@@ -80,9 +86,9 @@ Rectangle {
         Behavior on border.width { NumberAnimation { duration: 180 } }
 
         gradient: Gradient {
-            GradientStop { position: 0.0; color: Theme.dark ? "#241D2537" : "#B8FFFFFF" }
-            GradientStop { position: 0.52; color: Theme.dark ? "#18111620" : "#98F8FAFD" }
-            GradientStop { position: 1.0; color: Theme.dark ? "#26101722" : "#A8E7EDF5" }
+            GradientStop { position: 0.0; color: Theme.dark ? "#3E1D2537" : "#D2FFFFFF" }
+            GradientStop { position: 0.52; color: Theme.dark ? "#32111620" : "#B2F8FAFD" }
+            GradientStop { position: 1.0; color: Theme.dark ? "#40101722" : "#C2E7EDF5" }
         }
 
         Rectangle {
@@ -377,6 +383,16 @@ Rectangle {
                 }
             }
 
+            Text {
+                Layout.fillWidth: true
+                visible: root.executionMessage.length > 0
+                text: root.executionMessage
+                color: root.executionOk ? Theme.success : Theme.error
+                font.pixelSize: 12
+                font.weight: Font.DemiBold
+                elide: Text.ElideRight
+            }
+
             RowLayout {
                 Layout.fillWidth: true
 
@@ -393,9 +409,18 @@ Rectangle {
                     enabled: !root.loading && Boolean(root.selectedSuggestion && root.selectedSuggestion.actionType)
                     opacity: enabled ? 1 : 0.45
                     onClicked: {
+                        root.executionMessage = ""
+                        root.executionOk = false
                         var result = ScheduleService.applyScheduleSuggestion(root.selectedSuggestion)
-                        if (result && result.ok) {
-                            root.startLoad()
+                        var ok = Boolean(result && result.ok)
+                        var message = result && result.message
+                                      ? result.message
+                                      : (ok ? qsTr("调整已执行") : qsTr("执行失败，请重新生成建议"))
+                        root.executionMessage = message
+                        root.executionOk = ok
+                        root.executionFinished(ok, message)
+                        if (ok) {
+                            root.visible = false
                         }
                     }
                 }

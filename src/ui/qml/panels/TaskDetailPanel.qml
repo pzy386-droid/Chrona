@@ -23,8 +23,19 @@ Rectangle {
     readonly property var energyValues: ["low", "medium", "high"]
     readonly property var minChunkValues: [30, 45, 60]
     readonly property var idealChunkValues: [60, 90, 120]
-    readonly property var categoryColors: ["#6FD6A7", Theme.accentBright, "#FF8A65", Theme.warning, "#A78BFA", "#60A5FA", Theme.secondaryText, Theme.highPriority]
+    readonly property var categoryColors: ["#6FD6A7", Theme.accentBright, "#FF8A65", Theme.warning, "#A78BFA", "#60A5FA", Theme.secondaryText]
     signal closeRequested()
+
+    function isHighPriorityColor(color) {
+        return String(color || "").toLowerCase() === String(Theme.highPriority).toLowerCase()
+    }
+
+    function editableCategoryColor(priorityIndex) {
+        if (priorityIndex === 2) {
+            return Theme.highPriority
+        }
+        return isHighPriorityColor(root.selectedCategoryColor) ? Theme.accentBright : root.selectedCategoryColor
+    }
 
     function nearestIndex(values, value) {
         var best = 0
@@ -51,7 +62,7 @@ Rectangle {
         rangeEndDayIndex = Math.max(rangeStartDayIndex, Math.min(6, task.blockEndDayIndex || rangeStartDayIndex))
         priorityPicker.currentIndex = Math.max(0, Math.min(2, task.priority || 0))
         categoryField.text = task.categoryName || ""
-        selectedCategoryColor = task.categoryColor || Theme.accentBright
+        selectedCategoryColor = (task.priority || 0) === 2 ? Theme.highPriority : (isHighPriorityColor(task.categoryColor) ? Theme.accentBright : (task.categoryColor || Theme.accentBright))
         var preferred = task.preferredStudyTime || "evening"
         preferredPicker.currentIndex = Math.max(0, preferredValues.indexOf(preferred))
         autoScheduleToggle.checked = task.autoScheduleEnabled !== false
@@ -496,9 +507,48 @@ Rectangle {
                             onCurrentIndexChanged: {
                                 if (currentIndex === 2) {
                                     root.selectedCategoryColor = Theme.highPriority
+                                    if (root.hasTask) {
+                                        eventLockToggle.checked = true
+                                        statusText.color = Theme.warning
+                                        statusText.text = qsTr("高优先级已自动固定当前时间块")
+                                    }
+                                } else if (root.isHighPriorityColor(root.selectedCategoryColor)) {
+                                    root.selectedCategoryColor = Theme.accentBright
                                 }
                             }
                             options: [qsTr("低"), qsTr("中"), qsTr("高")]
+                        }
+
+                        Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: root.hasTask ? 52 : 0
+                            visible: root.hasTask
+                            radius: 10
+                            color: Theme.surfaceMuted
+                            border.width: 1
+                            border.color: root.task.dynamicPriority && root.task.dynamicPriority.level === "critical"
+                                ? Theme.dangerBorder : Theme.borderSoft
+
+                            Column {
+                                anchors.fill: parent
+                                anchors.margins: 9
+                                spacing: 3
+                                Text {
+                                    text: qsTr("动态优先级 %1").arg(root.task.dynamicPriority ? root.task.dynamicPriority.score : 0)
+                                    color: root.task.dynamicPriority && root.task.dynamicPriority.level === "critical"
+                                        ? Theme.error : Theme.primaryText
+                                    font.pixelSize: 11
+                                    font.weight: Font.DemiBold
+                                }
+                                Text {
+                                    width: parent.width
+                                    text: root.task.dynamicPriority && root.task.dynamicPriority.reasons
+                                        ? root.task.dynamicPriority.reasons.join(" · ") : qsTr("按常规节奏推进")
+                                    color: Theme.tertiaryText
+                                    font.pixelSize: 9
+                                    elide: Text.ElideRight
+                                }
+                            }
                         }
                     }
                 }
@@ -676,7 +726,7 @@ Rectangle {
 
             ActionButton {
                 Layout.fillWidth: true
-                text: qsTr("移除任务")
+                text: root.hasExistingBlock ? qsTr("移除当前块") : qsTr("移除任务")
                 danger: true
                 visible: !root.readOnly
                 onClicked: deleteChoicePopup.open()
@@ -703,7 +753,7 @@ Rectangle {
                 var savedMinChunk = root.minChunkValues[minChunkPicker.currentIndex]
                 var savedIdealChunk = root.idealChunkValues[idealChunkPicker.currentIndex]
                 var savedEffort = effortPicker.currentIndex
-                var savedEventLocked = savedDeadlineType === 1 ? true : eventLockToggle.checked
+                var savedEventLocked = eventLockToggle.checked
                 var originalDayIndex = root.task.blockDayIndex || 0
                 var originalEndDayIndex = root.task.blockEndDayIndex || originalDayIndex
                 var originalStartTime = root.task.blockStartText || ""
@@ -730,7 +780,7 @@ Rectangle {
                     scheduledEstimatedMinutes,
                     savedPriority,
                     savedCategory,
-                    root.selectedCategoryColor,
+                    root.editableCategoryColor(savedPriority),
                     savedPreferred,
                     savedAutoSchedule,
                     savedDeadlineType,
@@ -901,20 +951,32 @@ Rectangle {
             anchors.fill: parent
             anchors.margins: 18
             spacing: 12
-            Text { text: qsTr("如何移除这个任务？"); color: Theme.primaryText; font.pixelSize: 17; font.weight: Font.DemiBold }
+            Text { text: root.hasExistingBlock ? qsTr("如何移除这个时间块？") : qsTr("如何移除这个任务？"); color: Theme.primaryText; font.pixelSize: 17; font.weight: Font.DemiBold }
             Text {
                 Layout.fillWidth: true
-                text: qsTr("归档会保留历史日程；彻底删除会同时清除关联历史记录。")
+                text: root.hasExistingBlock ? qsTr("仅删除当前时间块会保留同任务的其他拆分块；彻底删除任务才会清除全部关联时间块。") : qsTr("归档会保留历史日程；彻底删除会同时清除关联历史记录。")
                 color: Theme.secondaryText
                 font.pixelSize: 12
                 wrapMode: Text.WordWrap
             }
             Item { Layout.fillHeight: true }
             ActionButton {
+                visible: root.hasExistingBlock
+                Layout.fillWidth: true
+                text: qsTr("仅删除当前时间块")
+                onClicked: {
+                    var result = ScheduleService.deleteBlock(root.task.blockId || 0)
+                    statusText.color = result && result.ok ? Theme.success : Theme.error
+                    statusText.text = result && result.message ? result.message : ""
+                    deleteChoicePopup.close()
+                }
+            }
+            ActionButton {
                 Layout.fillWidth: true
                 text: qsTr("归档并保留历史")
                 onClicked: {
                     var result = ScheduleService.archiveTask(root.task.id)
+                    statusText.color = result && result.ok ? Theme.success : Theme.error
                     statusText.text = result.message || ""
                     deleteChoicePopup.close()
                 }

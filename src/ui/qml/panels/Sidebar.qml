@@ -10,8 +10,6 @@ Rectangle {
     property string currentPage: "timeline"
     signal navigateRequested(string page)
     signal dailyPlanRequested()
-    signal focusRequested()
-    signal coursesRequested()
 
     color: Theme.sidebarBackground
 
@@ -74,8 +72,8 @@ Rectangle {
                     {label: qsTr("时间线"), mark: Theme.accent, action: "timeline"},
                     {label: qsTr("DDL 提醒"), mark: "#F59E0B", action: "deadlines"},
                     {label: qsTr("月历总览"), mark: "#A78BFA", action: "month"},
-                    {label: qsTr("当前专注"), mark: "#00D68F", action: "focus"},
-                    {label: qsTr("课程"), mark: "#FFB547", action: "courses"}
+                    {label: qsTr("数据洞察"), mark: "#22C55E", action: "insights"},
+                    {label: "\u0041\u0049 \u8bb0\u5fc6", mark: "#A78BFA", action: "memory"},
                 ]
 
                 delegate: Rectangle {
@@ -98,13 +96,9 @@ Rectangle {
                         hoverEnabled: true
                         cursorShape: Qt.PointingHandCursor
                         onClicked: {
-                            if (modelData.action === "focus") {
-                                root.focusRequested()
-                            } else if (modelData.action === "courses") {
-                                root.coursesRequested()
-                            } else if (modelData.action === "dailyPlan") {
+                            if (modelData.action === "dailyPlan") {
                                 root.dailyPlanRequested()
-                            } else if (modelData.action === "timeline" || modelData.action === "month" || modelData.action === "deadlines") {
+                            } else if (modelData.action === "timeline" || modelData.action === "month" || modelData.action === "deadlines" || modelData.action === "insights" || modelData.action === "memory") {
                                 root.navigateRequested(modelData.action)
                             }
                         }
@@ -256,109 +250,39 @@ Rectangle {
         Rectangle {
             id: finishDayBtn
             Layout.fillWidth: true
-            Layout.preferredHeight: root.collapsed ? 56 : 60
-            Layout.minimumHeight: root.collapsed ? 56 : 60
+            Layout.preferredHeight: root.collapsed ? 50 : 52
+            Layout.minimumHeight: root.collapsed ? 50 : 52
             Layout.bottomMargin: 8
-            radius: root.collapsed ? 16 : 18
-            gradient: Gradient {
-                GradientStop {
-                    position: 0
-                    color: Theme.dark
-                        ? (finishDayMouse.pressed ? "#2B3442" : (finishDayMouse.containsMouse ? "#3A4555" : "#303A48"))
-                        : (finishDayMouse.pressed ? "#D5DEE9" : (finishDayMouse.containsMouse ? "#F8FBFF" : "#EDF3F9"))
-                }
-                GradientStop {
-                    position: 0.5
-                    color: Theme.dark
-                        ? (finishDayMouse.pressed ? "#202833" : (finishDayMouse.containsMouse ? "#303A48" : "#28323F"))
-                        : (finishDayMouse.pressed ? "#CAD5E2" : (finishDayMouse.containsMouse ? "#EEF4FA" : "#E5ECF4"))
-                }
-                GradientStop {
-                    position: 1
-                    color: Theme.dark
-                        ? (finishDayMouse.pressed ? "#161D27" : (finishDayMouse.containsMouse ? "#222B37" : "#1D2632"))
-                        : (finishDayMouse.pressed ? "#BECAD8" : (finishDayMouse.containsMouse ? "#E3EAF2" : "#D8E2EC"))
-                }
-            }
+            radius: 13
+            color: finishDayMouse.pressed
+                ? Theme.surfaceSelected
+                : (finishDayMouse.containsMouse ? Theme.surfaceHover : Theme.surfaceElevated)
             border.width: 1
-            border.color: Theme.dark
-                ? (finishDayMouse.pressed ? "#657080" : (finishDayMouse.containsMouse ? "#A6B2C3" : "#788596"))
-                : (finishDayMouse.pressed ? "#91A0B2" : (finishDayMouse.containsMouse ? "#8FA3BA" : "#B5C2D1"))
-            scale: finishDayMouse.pressed ? 0.975 : (finishDayMouse.containsMouse ? 1.012 : 1)
-            transform: Translate { y: finishDayMouse.pressed ? 2 : 0 }
-            clip: true
+            border.color: finishDayMouse.containsMouse ? Theme.accentBright : Theme.border
+            scale: finishDayMouse.pressed ? 0.99 : 1
 
-            Behavior on scale { NumberAnimation { duration: finishDayMouse.pressed ? 70 : 180; easing.type: Easing.OutCubic } }
-            Behavior on border.color { ColorAnimation { duration: 130 } }
-
-            Rectangle {
-                anchors.fill: parent
-                anchors.margins: 2
-                radius: Math.max(1, parent.radius - 2)
-                color: "transparent"
-                border.width: 1
-                border.color: Theme.glassHighlight
-                opacity: finishDayMouse.pressed ? 0.12 : 0.3
-
-                Behavior on opacity { NumberAnimation { duration: 100 } }
-            }
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.leftMargin: 8
-                anchors.rightMargin: 8
-                anchors.topMargin: 4
-                height: parent.height * 0.42
-                radius: parent.radius - 5
-                gradient: Gradient {
-                    GradientStop { position: 0; color: "#F8FBFF" }
-                    GradientStop { position: 1; color: "#00FFFFFF" }
-                }
-                opacity: finishDayMouse.pressed ? 0.05 : (finishDayMouse.containsMouse ? 0.2 : 0.14)
-
-                Behavior on opacity { NumberAnimation { duration: 110 } }
-            }
-
-            Rectangle {
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.bottom: parent.bottom
-                anchors.leftMargin: 12
-                anchors.rightMargin: 12
-                anchors.bottomMargin: 4
-                height: parent.height * 0.28
-                radius: parent.radius - 7
-                color: Theme.dark ? "#08101B" : "#64748B"
-                opacity: finishDayMouse.pressed ? (Theme.dark ? 0.3 : 0.12) : (Theme.dark ? 0.14 : 0.07)
-
-                Behavior on opacity { NumberAnimation { duration: 110 } }
-            }
+            Behavior on color { ColorAnimation { duration: 120 } }
+            Behavior on border.color { ColorAnimation { duration: 120 } }
+            Behavior on scale { NumberAnimation { duration: 80; easing.type: Easing.OutCubic } }
 
             RowLayout {
                 anchors.fill: parent
-                anchors.leftMargin: root.collapsed ? 0 : 16
-                anchors.rightMargin: root.collapsed ? 0 : 16
+                anchors.leftMargin: root.collapsed ? 0 : 15
+                anchors.rightMargin: root.collapsed ? 0 : 15
                 spacing: root.collapsed ? 0 : 10
 
                 Rectangle {
-                    Layout.preferredWidth: root.collapsed ? parent.width : 30
-                    Layout.preferredHeight: 30
+                    Layout.preferredWidth: root.collapsed ? parent.width : 28
+                    Layout.preferredHeight: 28
                     Layout.alignment: Qt.AlignVCenter
-                    radius: 15
-                    color: Theme.dark
-                        ? (finishDayMouse.pressed ? "#4A5565" : "#EAF1FC")
-                        : (finishDayMouse.pressed ? "#AEBAC8" : "#FFFFFF")
-                    opacity: finishDayMouse.pressed ? 0.3 : (Theme.dark ? 0.18 : 0.72)
-                    border.width: 1
-                    border.color: Theme.glassBorder
+                    radius: 9
+                    color: Theme.surfaceSelected
 
                     Text {
                         anchors.centerIn: parent
-                        text: "✓"
-                        color: Theme.primaryText
-                        font.pixelSize: 15
+                        text: "\u2713"
+                        color: Theme.accentBright
+                        font.pixelSize: 14
                         font.weight: Font.DemiBold
                     }
                 }
@@ -367,9 +291,9 @@ Rectangle {
                     visible: !root.collapsed
                     Layout.fillWidth: true
                     Layout.alignment: Qt.AlignVCenter
-                    text: qsTr("结束今日")
-                    color: finishDayMouse.pressed ? Theme.secondaryText : Theme.strongText
-                    font.pixelSize: 15
+                    text: "\u7ed3\u675f\u4eca\u65e5"
+                    color: Theme.strongText
+                    font.pixelSize: 14
                     font.weight: Font.DemiBold
                     elide: Text.ElideRight
                 }

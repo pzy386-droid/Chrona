@@ -32,6 +32,7 @@ private slots:
     void doesNotCoverFixedEvents();
     void doesNotScheduleAfterDeadline();
     void keepsLockedBlocksUnavailable();
+    void dynamicPriorityPrefersUrgentHardTask();
 };
 
 void TaskSchedulerTest::doesNotCoverFixedEvents()
@@ -119,6 +120,22 @@ void TaskSchedulerTest::keepsLockedBlocksUnavailable()
     for (const auto& block : result.generatedBlocks) {
         QVERIFY(!overlaps(block.start, block.end, locked.start, locked.end));
     }
+}
+
+
+void TaskSchedulerTest::dynamicPriorityPrefersUrgentHardTask()
+{
+    const QDateTime now(QDate(2026, 6, 24), QTime(12, 0));
+    Task normal = makeTask(1, now.addDays(7), 60);
+    normal.priority = Priority::High;
+    Task urgent = makeTask(2, now.addSecs(4 * 60 * 60), 240);
+    urgent.priority = Priority::Medium;
+    urgent.deadlineType = DeadlineType::Hard;
+    urgent.scheduleStatus = ScheduleStatus::CouldNotFit;
+
+    PriorityEvaluator evaluator;
+    QVERIFY(evaluator.score(urgent, now) > evaluator.score(normal, now));
+    QCOMPARE(evaluator.details(urgent, now).value(QStringLiteral("level")).toString(), QStringLiteral("critical"));
 }
 
 QTEST_MAIN(TaskSchedulerTest)

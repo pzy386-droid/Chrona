@@ -1,4 +1,4 @@
-import QtQuick
+﻿import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import Chrona
@@ -18,6 +18,7 @@ Item {
     property bool focusCanComplete: false
     property var aiDraft: ({})
     property var aiDrafts: []
+    property int aiDraftIndex: 0
     property bool aiDraftLoading: false
     readonly property date selectedDateValue: new Date(ScheduleService.selectedDateText + "T00:00:00")
     readonly property date todayValue: {
@@ -80,6 +81,12 @@ Item {
             quickAddToast.text = result.message
             quickAddToast.open()
         }
+    }
+
+    function showOperationMessage(message, ok) {
+        quickAddToast.kind = ok ? "success" : "danger"
+        quickAddToast.text = message || (ok ? qsTr("调整已执行") : qsTr("操作失败"))
+        quickAddToast.open()
     }
 
     function beginFocusSession() {
@@ -223,19 +230,19 @@ Item {
         }
     }
 
-    function submitAiDraft() {
+    function editableDraftFromFields() {
         var durationValue = Number(String(aiDraftDurationText.text).replace(/[^0-9]/g, ""))
         if (isNaN(durationValue) || durationValue <= 0) {
             durationValue = root.aiDraft.estimatedMinutes || 60
         }
-        var draft = {
+        return {
             title: aiDraftTitle.text,
             notes: aiDraftNotes.text,
             deadline: aiDraftDeadline.text,
             estimatedMinutes: Math.max(30, durationValue),
             priority: aiDraftPriority.selectedIndex,
             categoryName: aiDraftCategory.text,
-            preferredStudyTime: "evening",
+            preferredStudyTime: root.aiDraft.preferredStudyTime || "evening",
             planningMode: root.aiDraft.planningMode || "task_deadline",
             hasTimeAnchor: !!root.aiDraft.hasTimeAnchor,
             scheduledStart: root.aiDraft.scheduledStart || "",
@@ -243,29 +250,89 @@ Item {
             source: root.aiDraft.source || "local",
             explanation: aiDraftReason.text
         }
-        var drafts = root.aiDrafts && root.aiDrafts.length > 1 ? root.aiDrafts.slice(0) : [draft]
-        drafts[0] = draft
-        var result = drafts.length > 1
-            ? ScheduleService.createTasksFromDrafts(drafts)
-            : ScheduleService.createTaskFromDraft(draft)
+    }
+
+    function submitAiDraft() {
+        var result = ScheduleService.createTaskFromDraft(editableDraftFromFields())
         aiDraftPopup.close()
         quickAddToast.kind = result && result.ok ? "success" : "danger"
         quickAddToast.text = result && result.message ? result.message : qsTr("已处理")
         quickAddToast.open()
     }
 
+    function draftTimeText(draft) {
+        if (!draft) {
+            return ""
+        }
+        if (draft.scheduledStart && draft.scheduledEnd) {
+            return draft.scheduledStart + " - " + String(draft.scheduledEnd).slice(11, 16)
+        }
+        return draft.deadline || ""
+    }
+
+    function draftReasonText(draft) {
+        if (!draft) {
+            return ""
+        }
+        var status = draft.scheduleStatusText || ""
+        var explanation = draft.explanation || ""
+        return status.length > 0 ? status + (explanation.length > 0 ? "\n" + explanation : "") : explanation
+    }
+
+    function removeDraftAt(index) {
+        var drafts = (root.aiDrafts || []).slice(0)
+        if (index < 0 || index >= drafts.length) {
+            return
+        }
+        drafts.splice(index, 1)
+        root.aiDrafts = drafts
+        if (drafts.length === 0) {
+            aiDraftPopup.close()
+            return
+        }
+        root.aiDraft = drafts[0]
+    }
+
+    function approveDraftAt(index) {
+        var drafts = root.aiDrafts || []
+        if (index < 0 || index >= drafts.length) {
+            return
+        }
+        var result = ScheduleService.createTaskFromDraft(drafts[index])
+        quickAddToast.kind = result && result.ok ? "success" : "danger"
+        quickAddToast.text = result && result.message ? result.message : qsTr("已处理")
+        quickAddToast.open()
+        if (result && result.ok) {
+            removeDraftAt(index)
+        }
+    }
+
+    function approveAllDrafts() {
+        var drafts = (root.aiDrafts || []).filter(function(draft) { return draft && draft.scheduleAvailable !== false })
+        var result = ScheduleService.createTasksFromDrafts(drafts)
+        aiDraftPopup.close()
+        quickAddToast.kind = result && result.ok ? "success" : "danger"
+        quickAddToast.text = result && result.message ? result.message : qsTr("已处理")
+        quickAddToast.open()
+    }
     function showTaskDraftResult(result) {
         root.aiDraftLoading = false
         if (result && result.ok) {
             root.aiDraft = result.draft || ({})
+            root.aiDrafts = result.drafts || [root.aiDraft]
+            root.aiDraftIndex = 0
             aiDraftTitle.text = root.aiDraft.title || ""
             aiDraftDeadline.text = root.aiDraft.deadline || ""
             aiDraftDurationText.text = String(Math.max(30, root.aiDraft.estimatedMinutes || 60))
             aiDraftPriority.selectedIndex = Math.max(0, Math.min(2, root.aiDraft.priority || 1))
             aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
             aiDraftNotes.text = root.aiDraft.notes || ""
-            aiDraftReason.text = root.aiDraft.explanation || result.message || ""
-            aiDraftSource.text = (result.source === "deepseek") ? qsTr("Chrona AI 规划草稿") : qsTr("本地规则草稿")
+            var scheduleStatus = root.aiDraft.scheduleStatusText || ""
+            var explanation = root.aiDraft.explanation || result.message || ""
+            aiDraftReason.text = scheduleStatus.length > 0
+                ? scheduleStatus + (explanation.length > 0 ? "\n" + explanation : "")
+                : explanation
+            aiDraftSource.text = root.aiDrafts.length > 1 ? qsTr("Chrona AI 批量草稿") : ((result.source === "deepseek") ? qsTr("Chrona AI 规划草稿") : qsTr("本地规则草稿"))
             if (!aiDraftPopup.opened) {
                 aiDraftPopup.open()
             }
@@ -356,8 +423,8 @@ Item {
                 }
 
                 DensityControl {
-                    visible: topHeader.width > 700
-                    preferredWidth: topHeader.compact ? 150 : 188
+                    visible: topHeader.width > 620
+                    preferredWidth: topHeader.compact ? 126 : 172
                     label: qsTr("行距")
                     value: root.timelineMinuteHeight
                     from: 0.5
@@ -375,8 +442,8 @@ Item {
                 }
 
                 DensityControl {
-                    visible: topHeader.width > 820
-                    preferredWidth: topHeader.compact ? 150 : 188
+                    visible: topHeader.width > 700
+                    preferredWidth: topHeader.compact ? 126 : 172
                     label: qsTr("列距")
                     value: root.timelineColumnWidth
                     from: 140
@@ -405,7 +472,7 @@ Item {
                 }
 
                 ThemeToggle {
-                    visible: topHeader.width > 1120
+                    visible: true
                 }
             }
         }
@@ -1205,10 +1272,119 @@ Item {
                 opacity: 0.8
             }
 
-            TextField { id: aiDraftTitle; Layout.fillWidth: true; placeholderText: qsTr("任务标题"); color: Theme.primaryText; background: PopupFieldBackground {} }
-            TextField { id: aiDraftDeadline; Layout.fillWidth: true; placeholderText: "yyyy-MM-dd HH:mm"; color: Theme.primaryText; background: PopupFieldBackground {} }
+            ScrollView {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                visible: root.aiDrafts.length > 1
+                clip: true
+
+                ColumnLayout {
+                    width: parent.width
+                    spacing: 10
+
+                    Text {
+                        Layout.fillWidth: true
+                        text: qsTr("识别到 %1 个时间意图，可逐个确认或全部加入").arg(root.aiDrafts.length)
+                        color: Theme.secondaryText
+                        font.pixelSize: 12
+                        wrapMode: Text.WordWrap
+                    }
+
+                    Repeater {
+                        model: root.aiDrafts
+                        delegate: Rectangle {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: 112
+                            radius: 14
+                            color: modelData.scheduleAvailable === false ? Theme.dangerSurface : Theme.surface
+                            border.width: 1
+                            border.color: modelData.scheduleAvailable === false ? Theme.dangerBorder : Theme.border
+
+                            RowLayout {
+                                anchors.fill: parent
+                                anchors.margins: 14
+                                spacing: 12
+
+                                Rectangle {
+                                    Layout.preferredWidth: 34
+                                    Layout.preferredHeight: 34
+                                    radius: 17
+                                    color: Theme.infoSurface
+                                    border.width: 1
+                                    border.color: Theme.accentBright
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: index + 1
+                                        color: Theme.accentBright
+                                        font.pixelSize: 13
+                                        font.weight: Font.Bold
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 4
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: modelData.title || qsTr("未命名时间块")
+                                        color: Theme.primaryText
+                                        font.pixelSize: 15
+                                        font.weight: Font.DemiBold
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: root.draftTimeText(modelData)
+                                        color: Theme.secondaryText
+                                        font.pixelSize: 12
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        text: (modelData.categoryName || qsTr("学习")) + " · " + Math.max(30, modelData.estimatedMinutes || 60) + qsTr(" 分钟")
+                                        color: Theme.tertiaryText
+                                        font.pixelSize: 11
+                                        elide: Text.ElideRight
+                                    }
+                                    Text {
+                                        Layout.fillWidth: true
+                                        visible: root.draftReasonText(modelData).length > 0
+                                        text: root.draftReasonText(modelData)
+                                        color: modelData.scheduleAvailable === false ? Theme.error : Theme.success
+                                        font.pixelSize: 11
+                                        maximumLineCount: 1
+                                        elide: Text.ElideRight
+                                    }
+                                }
+
+                                ColumnLayout {
+                                    Layout.preferredWidth: 84
+                                    spacing: 8
+                                    FocusButton {
+                                        Layout.preferredWidth: 84
+                                        Layout.preferredHeight: 34
+                                        text: qsTr("加入")
+                                        enabled: modelData.scheduleAvailable !== false
+                                        onClicked: root.approveDraftAt(index)
+                                    }
+                                    FocusButton {
+                                        Layout.preferredWidth: 84
+                                        Layout.preferredHeight: 34
+                                        text: qsTr("取消")
+                                        muted: true
+                                        onClicked: root.removeDraftAt(index)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            TextField { id: aiDraftTitle; visible: root.aiDrafts.length <= 1; Layout.fillWidth: true; placeholderText: qsTr("任务标题"); color: Theme.primaryText; background: PopupFieldBackground {} }
+            TextField { id: aiDraftDeadline; visible: root.aiDrafts.length <= 1; Layout.fillWidth: true; placeholderText: "yyyy-MM-dd HH:mm"; color: Theme.primaryText; background: PopupFieldBackground {} }
 
             RowLayout {
+                visible: root.aiDrafts.length <= 1
                 Layout.fillWidth: true
                 TextField {
                     id: aiDraftDurationText
@@ -1235,9 +1411,10 @@ Item {
                 }
             }
 
-            TextField { id: aiDraftCategory; Layout.fillWidth: true; placeholderText: qsTr("课程分类"); color: Theme.primaryText; background: PopupFieldBackground {} }
+            TextField { id: aiDraftCategory; visible: root.aiDrafts.length <= 1; Layout.fillWidth: true; placeholderText: qsTr("课程分类"); color: Theme.primaryText; background: PopupFieldBackground {} }
             TextArea {
                 id: aiDraftNotes
+                visible: root.aiDrafts.length <= 1
                 Layout.fillWidth: true
                 Layout.preferredHeight: 74
                 color: Theme.primaryText
@@ -1258,6 +1435,7 @@ Item {
                 }
             }
             Rectangle {
+                visible: root.aiDrafts.length <= 1
                 Layout.fillWidth: true
                 Layout.preferredHeight: 76
                 radius: 12
@@ -1282,12 +1460,26 @@ Item {
                 Layout.fillWidth: true
                 Text {
                     Layout.fillWidth: true
-                    text: qsTr("Chrona AI 只生成草稿，不直接改数据库")
+                    text: root.aiDrafts.length > 1
+                        ? qsTr("可逐个确认，也可以一次加入所有可用草稿")
+                        : qsTr("Chrona AI 只生成草稿，不直接改数据库")
                     color: Theme.tertiaryText
                     font.pixelSize: 11
                 }
-                FocusButton { text: qsTr("取消"); muted: true; onClicked: aiDraftPopup.close() }
-                FocusButton { text: qsTr("加入日程"); onClicked: root.submitAiDraft() }
+                FocusButton {
+                    text: root.aiDrafts.length > 1 ? qsTr("全部取消") : qsTr("取消")
+                    muted: true
+                    onClicked: aiDraftPopup.close()
+                }
+                FocusButton {
+                    text: root.aiDrafts.length > 1
+                        ? qsTr("全部加入")
+                        : (root.aiDraft.scheduleAvailable === false ? "\u6682\u65e0\u53ef\u7528\u65f6\u6bb5" : "\u52a0\u5165\u65e5\u7a0b")
+                    enabled: root.aiDrafts.length > 1
+                        ? root.aiDrafts.some(function(draft) { return draft && draft.scheduleAvailable !== false })
+                        : root.aiDraft.scheduleAvailable !== false
+                    onClicked: root.aiDrafts.length > 1 ? root.approveAllDrafts() : root.submitAiDraft()
+                }
             }
         }
 
@@ -1491,8 +1683,12 @@ Item {
                             aiDraftPriority.selectedIndex = Math.max(0, Math.min(2, root.aiDraft.priority || 1))
                             aiDraftCategory.text = root.aiDraft.categoryName || qsTr("学习")
                             aiDraftNotes.text = root.aiDraft.notes || ""
-                            aiDraftReason.text = root.aiDraft.explanation || result.message || ""
-                            aiDraftSource.text = (result.source === "deepseek") ? qsTr("Chrona AI 规划草稿") : qsTr("本地规则草稿")
+                            var scheduleStatus = root.aiDraft.scheduleStatusText || ""
+            var explanation = root.aiDraft.explanation || result.message || ""
+            aiDraftReason.text = scheduleStatus.length > 0
+                ? scheduleStatus + (explanation.length > 0 ? "\n" + explanation : "")
+                : explanation
+                            aiDraftSource.text = root.aiDrafts.length > 1 ? qsTr("Chrona AI 批量草稿") : ((result.source === "deepseek") ? qsTr("Chrona AI 规划草稿") : qsTr("本地规则草稿"))
                             aiDraftPopup.open()
                         }
                     }

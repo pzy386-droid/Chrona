@@ -38,7 +38,7 @@ class ScheduleService : public QObject {
 
 public:
     ScheduleService(TaskRepository tasks, CalendarRepository calendar, DeadlineReminderRepository deadlines, TimeBlockRepository blocks,
-                    StudyFrameRepository studyFrames, SettingsRepository settings, BackupService backup,
+                    StudyFrameRepository studyFrames, SettingsRepository settings, MemoryRepository memories, BackupService backup,
                     AIService* aiService = nullptr, QObject* parent = nullptr);
 
     QObject* timelineModel();
@@ -73,6 +73,7 @@ public:
                                        int minChunkMinutes, int idealChunkMinutes, int effortLevel);
     Q_INVOKABLE QVariantMap archiveTask(int taskId);
     Q_INVOKABLE QVariantMap deleteTask(int taskId);
+    Q_INVOKABLE QVariantMap deleteBlock(int blockId);
     Q_INVOKABLE QVariantMap setSelectedDate(const QString& dateText);
     Q_INVOKABLE QVariantMap goToToday();
     Q_INVOKABLE QVariantList monthOverview(int year, int month) const;
@@ -104,11 +105,16 @@ public:
     Q_INVOKABLE QVariantMap explainSelectedSchedule();
     Q_INVOKABLE QVariantMap previewSelectedFocusBuffer();
     Q_INVOKABLE QVariantMap applyFocusBufferSuggestion(const QVariantMap& suggestion);
+    QVariantMap applySplitBlockSuggestion(const QVariantMap& suggestion);
     Q_INVOKABLE QVariantMap applyScheduleSuggestion(const QVariantMap& suggestion);
     Q_INVOKABLE QVariantMap previewImageTask(const QString& fileUrlOrPath);
     Q_INVOKABLE QVariantMap eveningReview() const;
     Q_INVOKABLE QVariantMap completeFirstLogin(const QString& name);
     Q_INVOKABLE bool signOutForLogin();
+    Q_INVOKABLE QVariantMap insightsDashboard(const QString& period) const;
+    Q_INVOKABLE QVariantMap memoryOverview() const;
+    Q_INVOKABLE QVariantMap addAIMemoryPreference(const QString& content);
+    Q_INVOKABLE QVariantMap clearAIMemory();
     Q_INVOKABLE bool setDemoModeEnabled(bool enabled);
     Q_INVOKABLE QVariantMap exportData(const QString& filePath);
     Q_INVOKABLE QVariantMap importData(const QString& filePath);
@@ -134,6 +140,10 @@ private:
     ScheduleContext buildAIContext(const QString& mode) const;
     QVariantMap localAIPlan(const QString& mode) const;
     QVariantMap requestAIPlan(const QString& mode);
+    QVariantMap sanitizeAIPlan(QVariantMap plan, const QString& mode) const;
+    QVariantMap sanitizeScheduleSuggestion(QVariantMap suggestion) const;
+    QVariantMap splitSuggestionForSelectedBlock() const;
+    QVariantMap resolveDraftSchedule(const QVariantMap& draft) const;
 
     TaskRepository m_tasks;
     CalendarRepository m_calendar;
@@ -141,8 +151,10 @@ private:
     TimeBlockRepository m_blocks;
     StudyFrameRepository m_studyFrames;
     SettingsRepository m_settings;
+    MemoryRepository m_memories;
     BackupService m_backup;
     TaskScheduler m_scheduler;
+    PriorityEvaluator m_priorityEvaluator;
     ConflictResolver m_conflicts;
     NLPTaskParser m_parser;
     OCRManager m_ocr;

@@ -15,17 +15,30 @@
 #include <utility>
 
 namespace {
+QString sanitizedCategoryColor(Priority priority, const QString& categoryColor)
+{
+    const QString trimmed = categoryColor.trimmed();
+    if (priority == Priority::High) {
+        return QStringLiteral("#EF4444");
+    }
+    if (trimmed.compare(QStringLiteral("#EF4444"), Qt::CaseInsensitive) == 0) {
+        return QStringLiteral("#7C8CFF");
+    }
+    return trimmed;
+}
+
 QString colorForPriority(Priority priority, const QString& categoryColor)
 {
     if (priority == Priority::High) {
         return QStringLiteral("#EF4444");
     }
-    if (!categoryColor.isEmpty()) {
-        return categoryColor;
+    const QString safeCategoryColor = sanitizedCategoryColor(priority, categoryColor);
+    if (!safeCategoryColor.isEmpty()) {
+        return safeCategoryColor;
     }
     switch (priority) {
     case Priority::High:
-        return QStringLiteral("#FF7A59");
+        return QStringLiteral("#EF4444");
     case Priority::Medium:
         return QStringLiteral("#7C8CFF");
     case Priority::Low:
@@ -34,6 +47,38 @@ QString colorForPriority(Priority priority, const QString& categoryColor)
     return QStringLiteral("#7C8CFF");
 }
 
+bool containsAnyText(const QString& input, std::initializer_list<QString> words)
+{
+    for (const QString& word : words) {
+        if (input.contains(word, Qt::CaseInsensitive)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+bool inputRequestsHighPriority(const QString& text)
+{
+    return containsAnyText(text, {
+        QStringLiteral("很急"), QStringLiteral("紧急"), QStringLiteral("高优先级"), QStringLiteral("优先级高"),
+        QStringLiteral("考试"), QStringLiteral("截止"), QStringLiteral("必须今天"), QStringLiteral("今天必须"),
+        QStringLiteral("明天交"), QStringLiteral("今晚交"), QStringLiteral("马上"), QStringLiteral("立刻")
+    }) || text.contains(QStringLiteral("DDL"), Qt::CaseInsensitive)
+        || text.contains(QStringLiteral("deadline"), Qt::CaseInsensitive);
+}
+
+void clampInferredHighPriority(QVariantMap& draft, const QString& userInput)
+{
+    if (draft.value(QStringLiteral("priority"), 1).toInt() != 2) {
+        return;
+    }
+    const QString itemText = draft.value(QStringLiteral("title")).toString()
+        + QLatin1Char(' ') + draft.value(QStringLiteral("notes")).toString()
+        + QLatin1Char(' ') + draft.value(QStringLiteral("explanation")).toString();
+    if (!inputRequestsHighPriority(userInput) && !inputRequestsHighPriority(itemText)) {
+        draft.insert(QStringLiteral("priority"), 1);
+    }
+}
 QString blockSourceKey(BlockSource source)
 {
     switch (source) {
@@ -285,7 +330,7 @@ int mergedBusyMinutes(QVector<QPair<int, int>> intervals)
 }
 
 ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calendar, DeadlineReminderRepository deadlines, TimeBlockRepository blocks,
-                                 StudyFrameRepository studyFrames, SettingsRepository settings, BackupService backup,
+                                 StudyFrameRepository studyFrames, SettingsRepository settings, MemoryRepository memories, BackupService backup,
                                  AIService* aiService, QObject* parent)
     : QObject(parent)
     , m_tasks(std::move(tasks))
@@ -294,6 +339,7 @@ ScheduleService::ScheduleService(TaskRepository tasks, CalendarRepository calend
     , m_blocks(std::move(blocks))
     , m_studyFrames(std::move(studyFrames))
     , m_settings(std::move(settings))
+    , m_memories(std::move(memories))
     , m_backup(std::move(backup))
     , m_aiService(aiService)
 {
@@ -655,14 +701,23 @@ QVariantMap ScheduleService::stopFocus()
 
 void ScheduleService::completeTask(int taskId)
 {
+    const auto task = m_taskModel.taskById(taskId);
     if (m_tasks.completeTask(taskId)) {
+        if (task) {
+            m_memories.upsert(
+                QStringLiteral("completion"),
+                QStringLiteral("task_%1").arg(taskId),
+                QObject::tr("完成了“%1”，偏好时段为 %2，任务强度为 %3")
+                    .arg(task->title, task->preferredStudyTime)
+                    .arg(task->effortLevel),
+                1.4);
+        }
         if (m_selectedTaskId == taskId) {
             m_selectedTaskId = 0;
         }
         reschedule();
     }
 }
-
 QVariantMap ScheduleService::completeBlock(int blockId)
 {
     if (blockId <= 0) {
@@ -674,11 +729,23 @@ QVariantMap ScheduleService::completeBlock(int blockId)
         return {{"ok", false}, {"message", QObject::tr("时间块还没有完整经过，暂时不能标记完成")}};
     }
 
+    const auto completedTask = item ? m_taskModel.taskById(item->taskId) : std::optional<Task>{};
     if (!m_blocks.completeBlock(blockId)) {
         return {{"ok", false}, {"message", QObject::tr("时间块完成失败")}};
     }
 
-    const int selectedTaskId = m_selectedTaskId;
+
+    if (item && completedTask) {
+        const int completedMinutes = qMax(1, static_cast<int>(item->start.secsTo(item->end) / 60));
+        m_memories.upsert(
+            QStringLiteral("study_pattern"),
+            QStringLiteral("category_%1_%2").arg(completedTask->categoryName, completedTask->preferredStudyTime),
+            QObject::tr("在 %1 完成了 %2 分钟的“%3”学习")
+                .arg(item->start.time().toString(QStringLiteral("HH:mm")))
+                .arg(completedMinutes)
+                .arg(completedTask->categoryName),
+            1.2);
+    }    const int selectedTaskId = m_selectedTaskId;
     m_selectedBlockId = blockId;
     reschedule();
     if (m_timelineModel.itemById(blockId)) {
@@ -753,20 +820,27 @@ QVariantMap ScheduleService::updateTask(int taskId, const QString& title, const 
     task.idealChunkMinutes = qMax(task.minChunkMinutes, qBound(30, idealChunkMinutes, 240));
     task.effortLevel = qBound(0, effortLevel, 2);
     task.priority = static_cast<Priority>(qBound(0, priority, 2));
-    task.colorOverride = task.priority == Priority::High
-        ? QStringLiteral("#EF4444")
-        : categoryColor.trimmed();
+    task.colorOverride = sanitizedCategoryColor(task.priority, categoryColor);
     task.categoryColor = task.colorOverride;
     task.preferredStudyTime = preferredStudyTime.trimmed().isEmpty() ? QStringLiteral("evening") : preferredStudyTime.trimmed();
 
     if (!m_tasks.updateTask(task, categoryName)) {
         return {{"ok", false}, {"message", QObject::tr("任务更新失败：%1").arg(m_tasks.lastError())}};
     }
+    m_memories.upsert(
+        QStringLiteral("preference"),
+        QStringLiteral("study_time_%1").arg(task.categoryName),
+        QObject::tr("%1 类任务偏好在 %2 学习，理想块 %3 分钟，强度 %4")
+            .arg(task.categoryName, task.preferredStudyTime)
+            .arg(task.idealChunkMinutes)
+            .arg(task.effortLevel),
+        1.1);
 
     const int previousBlockId = m_selectedBlockId;
-    if (task.deadlineType == DeadlineType::Hard && previousBlockId > 0
+    const bool shouldLockCurrentBlock = task.deadlineType == DeadlineType::Hard;
+    if (shouldLockCurrentBlock && previousBlockId > 0
         && !m_blocks.setBlockSource(previousBlockId, BlockSource::Locked)) {
-        return {{"ok", false}, {"message", QObject::tr("任务已更新，但硬截止时间块固定失败：%1").arg(m_blocks.lastError())}};
+        return {{"ok", false}, {"message", QObject::tr("任务已更新，但时间块固定失败：%1").arg(m_blocks.lastError())}};
     }
     reschedule();
     if (previousBlockId > 0 && m_timelineModel.itemById(previousBlockId)) {
@@ -790,6 +864,35 @@ QVariantMap ScheduleService::deleteTask(int taskId)
     }
     reschedule();
     return {{"ok", true}, {"message", QObject::tr("任务已删除")}};
+}
+
+QVariantMap ScheduleService::deleteBlock(int blockId)
+{
+    if (blockId <= 0) {
+        return {{"ok", false}, {"message", QObject::tr("请先选择一个时间块")}};
+    }
+
+    int taskId = 0;
+    if (const auto item = m_timelineModel.itemById(blockId)) {
+        taskId = item->taskId;
+    }
+
+    if (!m_blocks.deleteBlock(blockId)) {
+        return {{"ok", false}, {"message", QObject::tr("时间块删除失败：%1").arg(m_blocks.lastError())}};
+    }
+
+    if (m_selectedBlockId == blockId) {
+        m_selectedBlockId = 0;
+    }
+    if (taskId > 0) {
+        m_selectedTaskId = taskId;
+    }
+
+    reschedule();
+    if (taskId > 0) {
+        selectTask(taskId);
+    }
+    return {{"ok", true}, {"message", QObject::tr("当前时间块已删除，其他拆分块已保留")}};
 }
 
 QVariantMap ScheduleService::archiveTask(int taskId)
@@ -983,7 +1086,7 @@ QVariantMap ScheduleService::createScheduledTask(const QString& title, int dayOf
     task.minChunkMinutes = qMin(60, durationMinutes);
     task.idealChunkMinutes = durationMinutes;
     task.effortLevel = 1;
-    task.colorOverride = categoryColor.trimmed();
+    task.colorOverride = sanitizedCategoryColor(task.priority, categoryColor);
     task.categoryColor = task.colorOverride;
 
     const int taskId = m_tasks.createTaskReturningId(task, categoryName);
@@ -1456,6 +1559,8 @@ QVariantMap ScheduleService::scheduleSelectedTaskBlocks(int startDayIndex, int e
         return {{"ok", false}, {"message", QObject::tr("结束时间必须晚于起始时间")}};
     }
 
+    const bool effectiveLocked = locked;
+
     const ScheduleWindow window = displayWindow();
     const QVector<CalendarEvent> events = m_calendar.eventsBetween(window.start, window.end);
     const QVector<TimeBlock> allBlocks = m_blocks.blocksBetween(window.start, window.end);
@@ -1638,7 +1743,7 @@ QVariantMap ScheduleService::scheduleSelectedTaskBlocks(int startDayIndex, int e
         probe.taskId = m_selectedTaskId;
         probe.start = blockStart;
         probe.end = blockEnd;
-        probe.source = locked ? BlockSource::Locked : BlockSource::UserDragged;
+        probe.source = effectiveLocked ? BlockSource::Locked : BlockSource::UserDragged;
         otherBlocks.push_back(probe);
         planned.push_back({reusableBlockByDay.value(dayIndex, 0), blockStart, blockEnd});
     }
@@ -1651,7 +1756,7 @@ QVariantMap ScheduleService::scheduleSelectedTaskBlocks(int startDayIndex, int e
         saved.taskId = m_selectedTaskId;
         saved.start = block.start;
         saved.end = block.end;
-        saved.source = locked ? BlockSource::Locked : BlockSource::UserDragged;
+        saved.source = effectiveLocked ? BlockSource::Locked : BlockSource::UserDragged;
         blocksToSave.push_back(saved);
     }
     for (const TimeBlock& moved : relocatedById) {
@@ -1694,6 +1799,144 @@ QVariantMap ScheduleService::scheduleSelectedTaskBlocks(int startDayIndex, int e
     };
 }
 
+QVariantMap ScheduleService::resolveDraftSchedule(const QVariantMap& sourceDraft) const
+{
+    QVariantMap draft = sourceDraft;
+    const QString planningMode = draft.value(QStringLiteral("planningMode")).toString();
+    const bool hasTimeAnchor = draft.value(QStringLiteral("hasTimeAnchor")).toBool()
+        || planningMode == QStringLiteral("direct_time_block");
+    if (!hasTimeAnchor) {
+        draft.insert(QStringLiteral("scheduleAvailable"), true);
+        return draft;
+    }
+
+    QDateTime requestedStart = parseDateTimeText(draft.value(QStringLiteral("scheduledStart")).toString());
+    QDateTime requestedEnd = parseDateTimeText(draft.value(QStringLiteral("scheduledEnd")).toString());
+    const int fallbackMinutes = qMax(30, draft.value(QStringLiteral("estimatedMinutes"), 60).toInt());
+    if (!requestedStart.isValid() && requestedEnd.isValid()) {
+        requestedStart = requestedEnd.addSecs(-fallbackMinutes * 60);
+    }
+    if (!requestedStart.isValid()) {
+        draft.insert(QStringLiteral("scheduleAvailable"), false);
+        draft.insert(QStringLiteral("scheduleConflict"), true);
+        draft.insert(QStringLiteral("scheduleStatusText"),
+                     QObject::tr("\u65e0\u6cd5\u8bc6\u522b\u6709\u6548\u7684\u5f00\u59cb\u65f6\u95f4"));
+        return draft;
+    }
+    if (!requestedEnd.isValid() || requestedEnd <= requestedStart) {
+        requestedEnd = requestedStart.addSecs(fallbackMinutes * 60);
+    }
+
+    const qint64 durationSeconds = qMax<qint64>(30 * 60, requestedStart.secsTo(requestedEnd));
+    auto isAvailable = [this](const QDateTime& start, const QDateTime& end) {
+        const QVector<CalendarEvent> events = m_calendar.eventsBetween(start, end);
+        const QVector<TimeBlock> blocks = m_blocks.blocksBetween(start, end);
+        return m_conflicts.canPlace({start, end}, events, blocks);
+    };
+
+    if (isAvailable(requestedStart, requestedEnd)) {
+        draft.insert(QStringLiteral("scheduleAvailable"), true);
+        draft.insert(QStringLiteral("scheduleConflict"), false);
+        draft.insert(QStringLiteral("scheduleAdjusted"), false);
+        draft.insert(QStringLiteral("scheduleStatusText"),
+                     QObject::tr("\u5efa\u8bae\u65f6\u6bb5\u53ef\u7528"));
+        return draft;
+    }
+
+    const int requestedMinute = requestedStart.time().hour() * 60 + requestedStart.time().minute();
+    const int durationMinutes = qMax(30, static_cast<int>((durationSeconds + 59) / 60));
+    QDateTime resolvedStart;
+    QDateTime resolvedEnd;
+
+    // Prefer the same date and nearest 15-minute slot, then preserve the time
+    // preference over the following week if the requested date is fully occupied.
+    for (int dayOffset = 0; dayOffset < 7 && !resolvedStart.isValid(); ++dayOffset) {
+        const QDate date = requestedStart.date().addDays(dayOffset);
+        for (int distance = 0; distance < 96 && !resolvedStart.isValid(); ++distance) {
+            QVector<int> candidateMinutes;
+            if (distance == 0) {
+                candidateMinutes.push_back(requestedMinute);
+            } else {
+                candidateMinutes.push_back(requestedMinute + distance * 15);
+                candidateMinutes.push_back(requestedMinute - distance * 15);
+            }
+            for (const int minute : candidateMinutes) {
+                if (minute < 0 || minute + durationMinutes > 24 * 60) {
+                    continue;
+                }
+                const QDateTime candidateStart(date, QTime(minute / 60, minute % 60));
+                const QDateTime candidateEnd = candidateStart.addSecs(durationSeconds);
+                if (candidateStart < QDateTime::currentDateTime().addSecs(5 * 60)) {
+                    continue;
+                }
+                if (isAvailable(candidateStart, candidateEnd)) {
+                    resolvedStart = candidateStart;
+                    resolvedEnd = candidateEnd;
+                    break;
+                }
+            }
+        }
+    }
+
+    draft.insert(QStringLiteral("originalScheduledStart"), deadlineText(requestedStart));
+    draft.insert(QStringLiteral("originalScheduledEnd"), deadlineText(requestedEnd));
+    draft.insert(QStringLiteral("scheduleConflict"), true);
+    if (!resolvedStart.isValid()) {
+        draft.insert(QStringLiteral("scheduleAvailable"), false);
+        draft.insert(QStringLiteral("scheduleAdjusted"), false);
+        draft.insert(QStringLiteral("scheduleStatusText"),
+                     QObject::tr("\u672a\u6765 7 \u5929\u5185\u6ca1\u6709\u8db3\u591f\u7684\u8fde\u7eed\u7a7a\u95f2\u65f6\u6bb5"));
+        return draft;
+    }
+
+    draft.insert(QStringLiteral("scheduleAvailable"), true);
+    draft.insert(QStringLiteral("scheduleAdjusted"), true);
+    draft.insert(QStringLiteral("scheduledStart"), deadlineText(resolvedStart));
+    draft.insert(QStringLiteral("scheduledEnd"), deadlineText(resolvedEnd));
+    draft.insert(QStringLiteral("deadline"), deadlineText(resolvedEnd));
+    draft.insert(QStringLiteral("estimatedMinutes"), durationMinutes);
+    draft.insert(QStringLiteral("scheduleStatusText"),
+                 QObject::tr("\u539f\u65f6\u6bb5\u5df2\u5360\u7528\uff0c\u5df2\u8c03\u6574\u5230 %1 - %2")
+                     .arg(resolvedStart.toString(QStringLiteral("MM-dd HH:mm")),
+                          resolvedEnd.toString(QStringLiteral("MM-dd HH:mm"))));
+    const QString explanation = draft.value(QStringLiteral("explanation")).toString().trimmed();
+    const QString adjustment = QObject::tr("\u539f\u5efa\u8bae\u65f6\u6bb5\u5df2\u88ab\u5360\u7528\uff0cChrona \u5df2\u9009\u62e9\u6700\u8fd1\u7684\u7a7a\u95f2\u65f6\u6bb5\u3002");
+    draft.insert(QStringLiteral("explanation"),
+                 explanation.isEmpty() ? adjustment : explanation + QStringLiteral("\n") + adjustment);
+    return draft;
+}
+QVariantList localDraftsFromCompoundInput(const NLPTaskParser& parser, const QString& input, const QString& sourceMessage)
+{
+    QVariantList drafts;
+    const QString normalized = input.trimmed();
+    if (normalized.isEmpty()) {
+        return drafts;
+    }
+
+    QString splitter = normalized;
+    splitter.replace(QStringLiteral("然后"), QStringLiteral("，"));
+    splitter.replace(QStringLiteral("还有"), QStringLiteral("，"));
+    splitter.replace(QStringLiteral("再"), QStringLiteral("，"));
+    const QStringList parts = splitter.split(QRegularExpression(QStringLiteral("[，,；;。\\n]+")), Qt::SkipEmptyParts);
+    if (parts.size() < 2) {
+        return drafts;
+    }
+
+    QSet<QString> seen;
+    for (const QString& rawPart : parts) {
+        const QString part = rawPart.trimmed();
+        if (part.size() < 2 || seen.contains(part)) {
+            continue;
+        }
+        seen.insert(part);
+        const ParsedTaskDraft parsed = parser.parse(part);
+        if (!parsed.valid) {
+            continue;
+        }
+        drafts.push_back(parsedDraftToMap(parsed, QStringLiteral("local"), sourceMessage));
+    }
+    return drafts.size() >= 2 ? drafts : QVariantList{};
+}
 QVariantMap ScheduleService::previewTaskDraft(const QString& input)
 {
     if (input.trimmed().isEmpty()) {
@@ -1739,6 +1982,8 @@ QVariantMap ScheduleService::previewTaskDraft(const QString& input)
                 }
             }
 
+            clampInferredHighPriority(draft, input);
+
             const QDateTime normalizedStart = parseDateTimeText(draft.value(QStringLiteral("scheduledStart")).toString());
             const QDateTime normalizedEnd = parseDateTimeText(draft.value(QStringLiteral("scheduledEnd")).toString());
             if (normalizedStart.isValid()) {
@@ -1751,15 +1996,20 @@ QVariantMap ScheduleService::previewTaskDraft(const QString& input)
                 }
             }
 
+            draft = resolveDraftSchedule(draft);
+
             if (aiDraftLooksUseful(input, draft)) {
                 QVariantList drafts = aiResult.taskDrafts;
                 if (drafts.isEmpty()) {
                     drafts.push_back(draft);
+                } else {
+                    drafts[0] = draft;
                 }
                 for (QVariant& value : drafts) {
                     QVariantMap item = value.toMap();
                     item.insert(QStringLiteral("source"), draft.value(QStringLiteral("source")));
-                    value = item;
+                    clampInferredHighPriority(item, input);
+                    value = resolveDraftSchedule(item);
                 }
                 return {
                     {"ok", true},
@@ -1778,14 +2028,29 @@ QVariantMap ScheduleService::previewTaskDraft(const QString& input)
         aiFallbackMessage = QObject::tr("尚未连接 Chrona AI");
     }
 
+    const QString message = aiFallbackMessage.trimmed().isEmpty()
+        ? QObject::tr("已生成本地规则任务草稿，请确认后加入日程")
+        : QObject::tr("%1，已生成本地规则任务草稿，请确认后加入日程").arg(aiFallbackMessage);
+    QVariantList compoundDrafts = localDraftsFromCompoundInput(m_parser, input, message);
+    if (!compoundDrafts.isEmpty()) {
+        for (QVariant& value : compoundDrafts) {
+            value = resolveDraftSchedule(value.toMap());
+        }
+        return {
+            {"ok", true},
+            {"message", QObject::tr("已识别 %1 个时间意图，请逐个确认").arg(compoundDrafts.size())},
+            {"source", QStringLiteral("local")},
+            {"draft", compoundDrafts.first().toMap()},
+            {"drafts", compoundDrafts},
+            {"draftCount", compoundDrafts.size()}
+        };
+    }
+
     const ParsedTaskDraft parsed = m_parser.parse(input);
     if (!parsed.valid) {
         return {{"ok", false}, {"message", parsed.message}};
     }
-    const QString message = aiFallbackMessage.trimmed().isEmpty()
-        ? QObject::tr("已生成本地规则任务草稿，请确认后加入日程")
-        : QObject::tr("%1，已生成本地规则任务草稿，请确认后加入日程").arg(aiFallbackMessage);
-    const QVariantMap draft = parsedDraftToMap(parsed, QStringLiteral("local"), message);
+    const QVariantMap draft = resolveDraftSchedule(parsedDraftToMap(parsed, QStringLiteral("local"), message));
     return {
         {"ok", true},
         {"message", message},
@@ -1798,30 +2063,36 @@ QVariantMap ScheduleService::previewTaskDraft(const QString& input)
 
 QVariantMap ScheduleService::createTaskFromDraft(const QVariantMap& draft)
 {
-    const QString title = draft.value(QStringLiteral("title")).toString().trimmed();
-    QDateTime deadline = parseDateTimeText(draft.value(QStringLiteral("deadline")).toString());
+    const QVariantMap resolvedDraft = resolveDraftSchedule(draft);
+    const QString title = resolvedDraft.value(QStringLiteral("title")).toString().trimmed();
+    QDateTime deadline = parseDateTimeText(resolvedDraft.value(QStringLiteral("deadline")).toString());
     if (title.isEmpty() || !deadline.isValid()) {
         return {{"ok", false}, {"message", QObject::tr("任务草稿缺少标题或有效截止时间")}};
     }
 
-    const QString planningMode = draft.value(QStringLiteral("planningMode")).toString();
-    const bool hasTimeAnchor = draft.value(QStringLiteral("hasTimeAnchor")).toBool()
+    const QString planningMode = resolvedDraft.value(QStringLiteral("planningMode")).toString();
+    const bool hasTimeAnchor = resolvedDraft.value(QStringLiteral("hasTimeAnchor")).toBool()
         || planningMode == QStringLiteral("direct_time_block");
-    QDateTime scheduledStart = parseDateTimeText(draft.value(QStringLiteral("scheduledStart")).toString());
-    QDateTime scheduledEnd = parseDateTimeText(draft.value(QStringLiteral("scheduledEnd")).toString());
+    QDateTime scheduledStart = parseDateTimeText(resolvedDraft.value(QStringLiteral("scheduledStart")).toString());
+    QDateTime scheduledEnd = parseDateTimeText(resolvedDraft.value(QStringLiteral("scheduledEnd")).toString());
+
+    if (hasTimeAnchor && !resolvedDraft.value(QStringLiteral("scheduleAvailable"), true).toBool()) {
+        return {{"ok", false}, {"message", resolvedDraft.value(QStringLiteral("scheduleStatusText")).toString()}};
+    }
 
     Task task;
     task.title = title;
-    task.notes = draft.value(QStringLiteral("notes")).toString();
+    task.notes = resolvedDraft.value(QStringLiteral("notes")).toString();
     task.startDate = QDateTime(QDate::currentDate(), QTime(0, 0));
     task.deadlineType = DeadlineType::Soft;
     task.autoScheduleEnabled = !hasTimeAnchor;
     task.deadline = deadline;
 
-    const int estimatedMinutes = draft.contains(QStringLiteral("estimatedMinutes"))
-        ? draft.value(QStringLiteral("estimatedMinutes")).toInt()
+    const int estimatedMinutes = resolvedDraft.contains(QStringLiteral("estimatedMinutes"))
+        ? resolvedDraft.value(QStringLiteral("estimatedMinutes")).toInt()
         : 60;
     task.estimatedMinutes = qMax(30, estimatedMinutes);
+
 
     if (hasTimeAnchor) {
         if (!scheduledStart.isValid()) {
@@ -1840,20 +2111,21 @@ QVariantMap ScheduleService::createTaskFromDraft(const QVariantMap& draft)
     task.minChunkMinutes = m_config.minimumBlockMinutes;
     task.idealChunkMinutes = m_config.preferredBlockMinutes;
     task.effortLevel = 1;
-    const int priority = draft.contains(QStringLiteral("priority"))
-        ? draft.value(QStringLiteral("priority")).toInt()
+    const int priority = resolvedDraft.contains(QStringLiteral("priority"))
+        ? resolvedDraft.value(QStringLiteral("priority")).toInt()
         : 1;
     task.priority = static_cast<Priority>(qBound(0, priority, 2));
     task.status = TaskStatus::Inbox;
-    task.preferredStudyTime = draft.value(QStringLiteral("preferredStudyTime")).toString();
+    task.preferredStudyTime = resolvedDraft.value(QStringLiteral("preferredStudyTime")).toString();
     if (task.preferredStudyTime.trimmed().isEmpty()) {
         task.preferredStudyTime = QStringLiteral("evening");
     }
 
-    QString categoryName = draft.value(QStringLiteral("categoryName")).toString();
+    QString categoryName = resolvedDraft.value(QStringLiteral("categoryName")).toString();
     if (categoryName.trimmed().isEmpty()) {
         categoryName = QObject::tr("学习");
     }
+
 
     if (hasTimeAnchor) {
         const QVector<CalendarEvent> events = m_calendar.eventsBetween(scheduledStart, scheduledEnd);
@@ -1869,13 +2141,16 @@ QVariantMap ScheduleService::createTaskFromDraft(const QVariantMap& draft)
     }
 
     int createdBlockId = 0;
+
     if (hasTimeAnchor) {
         TimeBlock block;
         block.taskId = createdTaskId;
         block.start = scheduledStart;
         block.end = scheduledEnd;
-        block.source = BlockSource::UserDragged;
-        block.explanation = QObject::tr("由 AI/Quick Add 识别时间后直接创建");
+        block.source = task.priority == Priority::High ? BlockSource::Locked : BlockSource::UserDragged;
+        block.explanation = task.priority == Priority::High
+            ? QObject::tr("由 AI/Quick Add 创建，高优先级自动固定")
+            : QObject::tr("由 AI/Quick Add 识别时间后直接创建");
         createdBlockId = m_blocks.createBlock(block);
         if (createdBlockId <= 0) {
             return {{"ok", false}, {"message", QObject::tr("任务已创建，但时间块创建失败")}};
@@ -1891,7 +2166,11 @@ QVariantMap ScheduleService::createTaskFromDraft(const QVariantMap& draft)
 
     return {
         {"ok", true},
-        {"message", createdBlockId > 0 ? QObject::tr("已创建任务，并自动生成时间块") : QObject::tr("任务已加入日程并重新排程")},
+{"message", createdBlockId > 0
+            ? (resolvedDraft.value(QStringLiteral("scheduleAdjusted")).toBool()
+                ? QObject::tr("\u539f\u65f6\u6bb5\u5df2\u5360\u7528\uff0c\u5df2\u6539\u5230\u6700\u8fd1\u7a7a\u95f2\u65f6\u6bb5\u5e76\u521b\u5efa")
+                : QObject::tr("\u5df2\u521b\u5efa\u4efb\u52a1\uff0c\u5e76\u81ea\u52a8\u751f\u6210\u65f6\u95f4\u5757"))
+            : QObject::tr("\u4efb\u52a1\u5df2\u52a0\u5165\u65e5\u7a0b\u5e76\u91cd\u65b0\u6392\u7a0b")},
         {"taskId", createdTaskId},
         {"blockId", createdBlockId},
         {"title", task.title},
@@ -1970,7 +2249,8 @@ ScheduleContext ScheduleService::buildAIContext(const QString& mode) const
             {QStringLiteral("preferredStudyTime"), task.preferredStudyTime},
             {QStringLiteral("deadlineType"), static_cast<int>(task.deadlineType)},
             {QStringLiteral("effortLevel"), task.effortLevel},
-            {QStringLiteral("autoScheduleEnabled"), task.autoScheduleEnabled}
+            {QStringLiteral("autoScheduleEnabled"), task.autoScheduleEnabled},
+            {QStringLiteral("dynamicPriorityScore"), m_priorityEvaluator.score(task, QDateTime::currentDateTime())}
         });
     }
 
@@ -2007,7 +2287,8 @@ ScheduleContext ScheduleService::buildAIContext(const QString& mode) const
         {QStringLiteral("blocks"), blocks},
         {QStringLiteral("issues"), m_scheduleIssues},
         {QStringLiteral("capacity"), m_capacityStats},
-        {QStringLiteral("selected"), selectedDetail()}
+        {QStringLiteral("selected"), selectedDetail()},
+        {QStringLiteral("memories"), m_memories.recent(12)}
     };
     return context;
 }
@@ -2066,7 +2347,7 @@ QVariantMap ScheduleService::localAIPlan(const QString& mode) const
         }
     }
 
-    return {
+    QVariantMap plan{
         {QStringLiteral("ok"), true},
         {QStringLiteral("title"), title},
         {QStringLiteral("summary"), summary},
@@ -2077,8 +2358,201 @@ QVariantMap ScheduleService::localAIPlan(const QString& mode) const
         {QStringLiteral("provider"), QStringLiteral("local")},
         {QStringLiteral("model"), QObject::tr("本地规则")}
     };
+    return sanitizeAIPlan(plan, mode);
 }
 
+QVariantMap ScheduleService::sanitizeScheduleSuggestion(QVariantMap suggestion) const
+{
+    QString action = suggestion.value(QStringLiteral("actionType")).toString().trimmed();
+    const int taskId = suggestion.value(QStringLiteral("taskId")).toInt();
+
+    const QSet<QString> supportedActions{
+        QStringLiteral("reschedule"),
+        QStringLiteral("extend_deadline"),
+        QStringLiteral("review_task"),
+        QStringLiteral("focus_buffer"),
+        QStringLiteral("split_block")
+    };
+    if (!supportedActions.contains(action)) {
+        if (taskId > 0 && m_taskModel.taskById(taskId)) {
+            action = QStringLiteral("review_task");
+            suggestion.insert(QStringLiteral("actionType"), action);
+            suggestion.insert(QStringLiteral("impact"), QObject::tr("原建议动作暂不支持，已改为打开任务让你确认"));
+        } else {
+            return {};
+        }
+    }
+
+    if (action == QStringLiteral("reschedule")) {
+        suggestion.insert(QStringLiteral("taskId"), 0);
+        suggestion.insert(QStringLiteral("proposedDeadline"), QString());
+        return suggestion;
+    }
+
+    if (action == QStringLiteral("focus_buffer")) {
+        const int blockId = suggestion.value(QStringLiteral("blockId")).toInt();
+        const QDateTime proposedStart = parseDateTimeText(suggestion.value(QStringLiteral("proposedStart")).toString());
+        if (blockId <= 0 || !proposedStart.isValid()) {
+            return {};
+        }
+        return suggestion;
+    }
+
+
+    if (action == QStringLiteral("split_block")) {
+        const int blockId = suggestion.value(QStringLiteral("blockId")).toInt();
+        const int preferredMinutes = qBound(30, suggestion.value(QStringLiteral("preferredMinutes"), 90).toInt(), 180);
+        const int breakMinutes = qBound(0, suggestion.value(QStringLiteral("breakMinutes"), 15).toInt(), 45);
+        if (blockId <= 0) {
+            return {};
+        }
+        suggestion.insert(QStringLiteral("blockId"), blockId);
+        suggestion.insert(QStringLiteral("preferredMinutes"), preferredMinutes);
+        suggestion.insert(QStringLiteral("breakMinutes"), breakMinutes);
+        return suggestion;
+    }
+    const auto taskValue = m_taskModel.taskById(taskId);
+    if (!taskValue) {
+        return {};
+    }
+
+    if (action == QStringLiteral("review_task")) {
+        suggestion.insert(QStringLiteral("taskId"), taskId);
+        return suggestion;
+    }
+
+    if (action != QStringLiteral("extend_deadline")) {
+        return {};
+    }
+
+    const Task task = *taskValue;
+    QDateTime proposed = parseDateTimeText(suggestion.value(QStringLiteral("proposedDeadline")).toString());
+    const QDateTime maxDeadline = task.deadline.addDays(30);
+    bool repaired = false;
+
+    if (!proposed.isValid() || proposed <= task.deadline) {
+        proposed = task.deadline.addDays(1);
+        repaired = true;
+    }
+
+    const QDateTime now = QDateTime::currentDateTime();
+    if (proposed < now.addSecs(3600)) {
+        const QTime preferredTime = task.deadline.time().isValid() ? task.deadline.time() : QTime(23, 59);
+        proposed = QDateTime(now.date().addDays(1), preferredTime);
+        repaired = true;
+    }
+
+    if (proposed > maxDeadline) {
+        proposed = maxDeadline;
+        repaired = true;
+    }
+
+    if (!proposed.isValid() || proposed <= task.deadline) {
+        return {};
+    }
+
+    suggestion.insert(QStringLiteral("taskId"), taskId);
+    suggestion.insert(QStringLiteral("proposedDeadline"), deadlineText(proposed));
+    if (repaired) {
+        suggestion.insert(QStringLiteral("autoRepaired"), true);
+        const QString repairText = QObject::tr("Chrona 已自动修正为 %1，避免无效截止时间")
+            .arg(proposed.toString(QStringLiteral("MM-dd HH:mm")));
+        const QString impact = suggestion.value(QStringLiteral("impact")).toString().trimmed();
+        suggestion.insert(QStringLiteral("impact"), impact.isEmpty() ? repairText : impact + QStringLiteral(" · ") + repairText);
+    }
+    return suggestion;
+}
+
+QVariantMap ScheduleService::splitSuggestionForSelectedBlock() const
+{
+    if (m_selectedBlockId <= 0 || m_selectedTaskId <= 0) {
+        return {};
+    }
+
+    const ScheduleWindow window = displayWindow();
+    const QVector<TimeBlock> blocks = m_blocks.blocksBetween(window.start, window.end);
+    const auto taskValue = m_taskModel.taskById(m_selectedTaskId);
+    if (!taskValue) {
+        return {};
+    }
+
+    TimeBlock selectedBlock;
+    bool found = false;
+    for (const TimeBlock& block : blocks) {
+        if (block.id == m_selectedBlockId && block.taskId == m_selectedTaskId) {
+            selectedBlock = block;
+            found = true;
+            break;
+        }
+    }
+    if (!found || selectedBlock.completedAt.isValid()) {
+        return {};
+    }
+
+    const int durationMinutes = qMax(0, static_cast<int>(selectedBlock.start.secsTo(selectedBlock.end) / 60));
+    const int preferredMinutes = qBound(30, taskValue->idealChunkMinutes > 0 ? taskValue->idealChunkMinutes : 90, 180);
+    const int breakMinutes = 15;
+    if (durationMinutes < preferredMinutes * 2 + breakMinutes) {
+        return {};
+    }
+
+    const int chunkCount = qMax(2, (durationMinutes + breakMinutes) / (preferredMinutes + breakMinutes));
+    return QVariantMap{
+        {QStringLiteral("title"), QObject::tr("拆分当前长时间块")},
+        {QStringLiteral("description"), QObject::tr("把“%1”拆成约 %2 分钟的小块，中间保留短休息。")
+            .arg(taskValue->title)
+            .arg(preferredMinutes)},
+        {QStringLiteral("impact"), QObject::tr("预计生成 %1 个学习块，原时间块会被替换").arg(chunkCount)},
+        {QStringLiteral("actionType"), QStringLiteral("split_block")},
+        {QStringLiteral("taskId"), m_selectedTaskId},
+        {QStringLiteral("blockId"), m_selectedBlockId},
+        {QStringLiteral("preferredMinutes"), preferredMinutes},
+        {QStringLiteral("breakMinutes"), breakMinutes},
+        {QStringLiteral("proposedDeadline"), QString()}
+    };
+}
+QVariantMap ScheduleService::sanitizeAIPlan(QVariantMap plan, const QString& mode) const
+{
+    QVariantList sanitized;
+    for (const QVariant& value : plan.value(QStringLiteral("suggestions")).toList()) {
+        const QVariantMap suggestion = sanitizeScheduleSuggestion(value.toMap());
+        if (!suggestion.isEmpty()) {
+            sanitized.push_back(suggestion);
+        }
+    }
+
+    const QVariantMap splitSuggestion = splitSuggestionForSelectedBlock();
+    if (!splitSuggestion.isEmpty()) {
+        bool alreadyHasSplit = false;
+        for (const QVariant& value : sanitized) {
+            const QVariantMap suggestion = value.toMap();
+            if (suggestion.value(QStringLiteral("actionType")).toString() == QStringLiteral("split_block")
+                && suggestion.value(QStringLiteral("blockId")).toInt() == splitSuggestion.value(QStringLiteral("blockId")).toInt()) {
+                alreadyHasSplit = true;
+                break;
+            }
+        }
+        if (!alreadyHasSplit) {
+            sanitized.push_front(splitSuggestion);
+        }
+    }
+
+    if (sanitized.isEmpty() && mode != QStringLiteral("explain_schedule")) {
+        sanitized.push_back(QVariantMap{
+            {QStringLiteral("title"), QObject::tr("按当前约束重新排程")},
+            {QStringLiteral("description"), QObject::tr("过滤掉不可执行建议后，先刷新自动排程。")},
+            {QStringLiteral("impact"), QObject::tr("不会修改任务内容，只重新计算可用时间块")},
+            {QStringLiteral("actionType"), QStringLiteral("reschedule")},
+            {QStringLiteral("taskId"), 0},
+            {QStringLiteral("proposedDeadline"), QString()}
+        });
+        plan.insert(QStringLiteral("summary"), QObject::tr("原建议不可执行，Chrona 已切换为安全的重新排程方案。"));
+    }
+
+    plan.insert(QStringLiteral("suggestions"), sanitized);
+    plan.insert(QStringLiteral("ok"), true);
+    return plan;
+}
 QVariantMap ScheduleService::requestAIPlan(const QString& mode)
 {
     if (m_aiService && m_aiService->isConfigured()) {
@@ -2087,28 +2561,12 @@ QVariantMap ScheduleService::requestAIPlan(const QString& mode)
         const AISuggestionResult result = future.result();
         if (result.supported && !result.suggestion.isEmpty()) {
             QVariantMap plan = result.suggestion;
-            QVariantList validSuggestions;
-            const QSet<QString> allowed{
-                QStringLiteral("reschedule"),
-                QStringLiteral("extend_deadline"),
-                QStringLiteral("review_task"),
-                QStringLiteral("focus_buffer")
-            };
-            for (const QVariant& value : plan.value(QStringLiteral("suggestions")).toList()) {
-                const QVariantMap suggestion = value.toMap();
-                if (allowed.contains(suggestion.value(QStringLiteral("actionType")).toString())) {
-                    validSuggestions.push_back(suggestion);
-                }
-            }
-            plan.insert(QStringLiteral("suggestions"), validSuggestions);
-            plan.insert(QStringLiteral("ok"), true);
             plan.insert(QStringLiteral("provider"), result.provider);
-            return plan;
+            return sanitizeAIPlan(plan, mode);
         }
     }
     return localAIPlan(mode);
 }
-
 QVariantMap ScheduleService::aiTodayPlan()
 {
     return requestAIPlan(QStringLiteral("daily_plan"));
@@ -2136,21 +2594,6 @@ void ScheduleService::requestSchedulePlan(const QString& mode)
             const AISuggestionResult aiResult = aiFuture.result();
             if (aiResult.supported && !aiResult.suggestion.isEmpty()) {
                 QVariantMap aiPlan = aiResult.suggestion;
-                QVariantList validSuggestions;
-                const QSet<QString> allowed{
-                    QStringLiteral("reschedule"),
-                    QStringLiteral("extend_deadline"),
-                    QStringLiteral("review_task"),
-                    QStringLiteral("focus_buffer")
-                };
-                for (const QVariant& value : aiPlan.value(QStringLiteral("suggestions")).toList()) {
-                    const QVariantMap suggestion = value.toMap();
-                    if (allowed.contains(suggestion.value(QStringLiteral("actionType")).toString())) {
-                        validSuggestions.push_back(suggestion);
-                    }
-                }
-                aiPlan.insert(QStringLiteral("suggestions"), validSuggestions);
-                aiPlan.insert(QStringLiteral("ok"), true);
                 aiPlan.insert(QStringLiteral("provider"), aiResult.provider);
                 plan = aiPlan;
             }
@@ -2158,7 +2601,7 @@ void ScheduleService::requestSchedulePlan(const QString& mode)
 
         QMetaObject::invokeMethod(self.data(), [self, normalizedMode, plan] {
             if (self) {
-                emit self->schedulePlanReady(normalizedMode, plan);
+                emit self->schedulePlanReady(normalizedMode, self->sanitizeAIPlan(plan, normalizedMode));
             }
         }, Qt::QueuedConnection);
     });
@@ -2406,17 +2849,94 @@ QVariantMap ScheduleService::applyFocusBufferSuggestion(const QVariantMap& sugge
     };
 }
 
+QVariantMap ScheduleService::applySplitBlockSuggestion(const QVariantMap& suggestion)
+{
+    const int blockId = suggestion.value(QStringLiteral("blockId")).toInt();
+    const int preferredMinutes = qBound(30, suggestion.value(QStringLiteral("preferredMinutes"), 90).toInt(), 180);
+    const int breakMinutes = qBound(0, suggestion.value(QStringLiteral("breakMinutes"), 15).toInt(), 45);
+    if (blockId <= 0) {
+        return { {"ok", false}, {"message", QObject::tr("拆分建议缺少有效时间块")} };
+    }
+
+    const ScheduleWindow window = displayWindow();
+    const QVector<TimeBlock> blocks = m_blocks.blocksBetween(window.start, window.end);
+    TimeBlock sourceBlock;
+    bool found = false;
+    for (const TimeBlock& block : blocks) {
+        if (block.id == blockId) {
+            sourceBlock = block;
+            found = true;
+            break;
+        }
+    }
+    if (!found || sourceBlock.completedAt.isValid()) {
+        return { {"ok", false}, {"message", QObject::tr("原时间块已变化，请重新生成建议")} };
+    }
+
+    const int totalMinutes = qMax(0, static_cast<int>(sourceBlock.start.secsTo(sourceBlock.end) / 60));
+    if (totalMinutes < preferredMinutes * 2 + breakMinutes) {
+        return { {"ok", false}, {"message", QObject::tr("当前时间块不够长，不需要拆分")} };
+    }
+
+    QVector<TimeBlock> newBlocks;
+    QDateTime cursor = sourceBlock.start;
+    while (cursor < sourceBlock.end) {
+        const int remaining = qMax(0, static_cast<int>(cursor.secsTo(sourceBlock.end) / 60));
+        if (remaining < 30) {
+            break;
+        }
+
+        int chunkMinutes = qMin(preferredMinutes, remaining);
+        const int afterPreferred = remaining - preferredMinutes;
+        if (afterPreferred > 0 && afterPreferred < 30 + breakMinutes) {
+            chunkMinutes = remaining;
+        }
+
+        TimeBlock chunk = sourceBlock;
+        chunk.id = 0;
+        chunk.start = cursor;
+        chunk.end = cursor.addSecs(chunkMinutes * 60);
+        chunk.source = sourceBlock.source == BlockSource::Locked ? BlockSource::Locked : BlockSource::UserDragged;
+        chunk.scheduleRunId = 0;
+        chunk.completedAt = {};
+        chunk.explanation = QObject::tr("AI 将长时间块拆分为专注小块");
+        newBlocks.push_back(chunk);
+
+        cursor = chunk.end.addSecs(breakMinutes * 60);
+    }
+
+    if (newBlocks.size() < 2) {
+        return { {"ok", false}, {"message", QObject::tr("没有生成有效的拆分结果")} };
+    }
+
+    QVector<int> newIds;
+    if (!m_blocks.upsertBlocks(newBlocks, {blockId}, &newIds)) {
+        return { {"ok", false}, {"message", QObject::tr("拆分失败：%1").arg(m_blocks.lastError())} };
+    }
+
+    reload();
+    if (!newIds.isEmpty()) {
+        selectTimelineItem(sourceBlock.taskId, newIds.first());
+    } else {
+        selectTask(sourceBlock.taskId);
+    }
+    return { {"ok", true}, {"message", QObject::tr("已拆分为 %1 个专注时间块").arg(newBlocks.size())} };
+}
 QVariantMap ScheduleService::applyScheduleSuggestion(const QVariantMap& suggestion)
 {
     const QString action = suggestion.value(QStringLiteral("actionType")).toString();
     if (action == QStringLiteral("focus_buffer")) {
         return applyFocusBufferSuggestion(suggestion);
     }
+    if (action == QStringLiteral("split_block")) {
+        return applySplitBlockSuggestion(suggestion);
+    }
     if (action == QStringLiteral("reschedule")) {
         return reschedule();
     }
 
     const int taskId = suggestion.value(QStringLiteral("taskId")).toInt();
+
     const auto taskValue = m_taskModel.taskById(taskId);
     if (!taskValue) {
         return {{"ok", false}, {"message", QObject::tr("建议引用的任务不存在")}};
@@ -2542,6 +3062,194 @@ QVariantMap ScheduleService::eveningReview() const
     };
 }
 
+QVariantMap ScheduleService::insightsDashboard(const QString& period) const
+{
+    const bool weekly = period.trimmed().toLower() != QStringLiteral("day");
+    const QDate today = QDate::currentDate();
+    const QDate startDate = weekly ? today.addDays(1 - today.dayOfWeek()) : today;
+    const int dayCount = weekly ? 7 : 1;
+    const QDateTime rangeStart(startDate, QTime(0, 0));
+    const QDateTime rangeEnd(startDate.addDays(dayCount), QTime(0, 0));
+    const QVector<Task> tasks = m_tasks.allTasks();
+    const QVector<TimeBlock> blocks = m_blocks.blocksBetween(rangeStart, rangeEnd);
+
+    QHash<int, Task> taskById;
+    for (const Task& task : tasks) {
+        taskById.insert(task.id, task);
+    }
+
+    struct DayTotals {
+        int planned = 0;
+        int completed = 0;
+        int blockCount = 0;
+    };
+    QVector<DayTotals> totals(dayCount);
+    QHash<QString, int> categoryMinutes;
+    QHash<QString, QString> categoryColors;
+    int learningMinutes = 0;
+    int completedMinutes = 0;
+    int highPriorityMinutes = 0;
+
+    for (const TimeBlock& block : blocks) {
+        if (block.taskId <= 0 || !block.start.isValid() || !block.end.isValid() || block.end <= block.start) {
+            continue;
+        }
+        const int dayIndex = startDate.daysTo(block.start.date());
+        if (dayIndex < 0 || dayIndex >= dayCount) {
+            continue;
+        }
+        const int minutes = qMax(0, static_cast<int>(block.start.secsTo(block.end) / 60));
+        const Task task = taskById.value(block.taskId);
+        learningMinutes += minutes;
+        totals[dayIndex].planned += minutes;
+        totals[dayIndex].blockCount++;
+        if (block.completedAt.isValid()) {
+            completedMinutes += minutes;
+            totals[dayIndex].completed += minutes;
+        }
+        if (task.priority == Priority::High) {
+            highPriorityMinutes += minutes;
+        }
+        const QString category = task.categoryName.trimmed().isEmpty() ? QObject::tr("其他学习") : task.categoryName;
+        categoryMinutes[category] += minutes;
+        categoryColors[category] = colorForPriority(task.priority, task.categoryColor);
+    }
+
+    const int workdayMinutes = 15 * 60 * dayCount;
+    const int restMinutes = qMin(qMax(0, workdayMinutes - learningMinutes), blocks.size() * m_config.breakMinutes);
+    const int freeMinutes = qMax(0, workdayMinutes - learningMinutes - restMinutes);
+    const int completionRate = learningMinutes > 0
+        ? qBound(0, qRound(completedMinutes * 100.0 / learningMinutes), 100)
+        : 0;
+
+    QVariantList dailyBars;
+    for (int day = 0; day < dayCount; ++day) {
+        const QDate date = startDate.addDays(day);
+        dailyBars.push_back(QVariantMap{
+            {QStringLiteral("dateText"), date.toString(QStringLiteral("MM-dd"))},
+            {QStringLiteral("dayLabel"), QLocale().standaloneDayName(date.dayOfWeek(), QLocale::ShortFormat)},
+            {QStringLiteral("plannedMinutes"), totals[day].planned},
+            {QStringLiteral("completedMinutes"), totals[day].completed},
+            {QStringLiteral("blockCount"), totals[day].blockCount}
+        });
+    }
+
+    QVariantList categories;
+    QList<QString> categoryNames = categoryMinutes.keys();
+    std::sort(categoryNames.begin(), categoryNames.end(), [&](const QString& left, const QString& right) {
+        return categoryMinutes.value(left) > categoryMinutes.value(right);
+    });
+    for (const QString& category : categoryNames.mid(0, 6)) {
+        categories.push_back(QVariantMap{
+            {QStringLiteral("name"), category},
+            {QStringLiteral("minutes"), categoryMinutes.value(category)},
+            {QStringLiteral("color"), categoryColors.value(category, QStringLiteral("#7C8CFF"))}
+        });
+    }
+
+    struct Candidate {
+        Task task;
+        int score = 0;
+    };
+    QVector<Candidate> candidates;
+    const QDateTime now = QDateTime::currentDateTime();
+    for (const Task& task : tasks) {
+        if (task.status == TaskStatus::Done || task.status == TaskStatus::Archived || task.remainingMinutes <= 0) {
+            continue;
+        }
+        candidates.push_back({task, m_priorityEvaluator.score(task, now)});
+    }
+    std::sort(candidates.begin(), candidates.end(), [](const Candidate& left, const Candidate& right) {
+        return left.score == right.score ? left.task.deadline < right.task.deadline : left.score > right.score;
+    });
+
+    QVariantList tomorrowSuggestions;
+    for (int i = 0; i < qMin(3, candidates.size()); ++i) {
+        const Candidate& candidate = candidates.at(i);
+        tomorrowSuggestions.push_back(QVariantMap{
+            {QStringLiteral("taskId"), candidate.task.id},
+            {QStringLiteral("title"), candidate.task.title},
+            {QStringLiteral("score"), candidate.score},
+            {QStringLiteral("level"), m_priorityEvaluator.details(candidate.task, now).value(QStringLiteral("level"))},
+            {QStringLiteral("deadlineText"), deadlineText(candidate.task.deadline)},
+            {QStringLiteral("remainingMinutes"), candidate.task.remainingMinutes}
+        });
+    }
+
+    const QVariantMap review = eveningReview();
+    QString aiSummary;
+    if (learningMinutes <= 0) {
+        aiSummary = QObject::tr("当前周期还没有学习时间块。先安排一个 30 分钟的小任务，让 Chrona 开始学习你的节奏。");
+    } else if (completionRate >= 80) {
+        aiSummary = QObject::tr("执行节奏稳定，完成率达到 %1%。明天优先保持相同学习时段，再处理最高动态优先级任务。").arg(completionRate);
+    } else if (completionRate >= 50) {
+        aiSummary = QObject::tr("计划完成了一半以上，但仍有收尾压力。建议明天减少并行任务，把第一块时间留给最高优先级事项。");
+    } else {
+        aiSummary = QObject::tr("完成率偏低，当前计划可能过密。建议缩短单块时长并保留恢复间隔，避免继续堆叠未完成任务。");
+    }
+
+    return {
+        {QStringLiteral("period"), weekly ? QStringLiteral("week") : QStringLiteral("day")},
+        {QStringLiteral("rangeLabel"), weekly
+            ? QStringLiteral("%1 - %2").arg(startDate.toString(QStringLiteral("MM.dd")), startDate.addDays(6).toString(QStringLiteral("MM.dd")))
+            : today.toString(QStringLiteral("yyyy.MM.dd"))},
+        {QStringLiteral("learningMinutes"), learningMinutes},
+        {QStringLiteral("completedMinutes"), completedMinutes},
+        {QStringLiteral("restMinutes"), restMinutes},
+        {QStringLiteral("freeMinutes"), freeMinutes},
+        {QStringLiteral("completionRate"), completionRate},
+        {QStringLiteral("highPriorityMinutes"), highPriorityMinutes},
+        {QStringLiteral("dailyBars"), dailyBars},
+        {QStringLiteral("categories"), categories},
+        {QStringLiteral("completedCount"), review.value(QStringLiteral("completedTasks")).toList().size()},
+        {QStringLiteral("unfinishedCount"), review.value(QStringLiteral("unfinishedCount")).toInt()},
+        {QStringLiteral("tomorrowSuggestions"), tomorrowSuggestions},
+        {QStringLiteral("aiSummary"), aiSummary},
+        {QStringLiteral("memoryCount"), m_memories.count()},
+        {QStringLiteral("recentMemories"), m_memories.recent(4)}
+    };
+}
+
+QVariantMap ScheduleService::memoryOverview() const
+{
+    return {
+        {QStringLiteral("count"), m_memories.count()},
+        {QStringLiteral("items"), m_memories.recent(20)}
+    };
+}
+
+QVariantMap ScheduleService::addAIMemoryPreference(const QString& content)
+{
+    const QString normalized = content.simplified();
+    if (normalized.size() < 4) {
+        return {
+            {QStringLiteral("ok"), false},
+            {QStringLiteral("message"), QObject::tr("请写清楚一点偏好，例如：晚上10点后不要再安排时间块")}
+        };
+    }
+
+    const QString key = QStringLiteral("manual_%1").arg(QString::number(static_cast<qulonglong>(qHash(normalized)), 16));
+    const bool ok = m_memories.upsert(QStringLiteral("preference"), key, normalized, 3.0);
+    if (ok) {
+        emit dataChanged();
+    }
+    return {
+        {QStringLiteral("ok"), ok},
+        {QStringLiteral("message"), ok ? QObject::tr("偏好已加入 AI 记忆") : QObject::tr("偏好保存失败")}
+    };
+}
+
+QVariantMap ScheduleService::clearAIMemory()
+{
+    const bool ok = m_memories.clear();
+    if (ok) {
+        emit dataChanged();
+    }
+    return {
+        {QStringLiteral("ok"), ok},
+        {QStringLiteral("message"), ok ? QObject::tr("AI 记忆已清空") : QObject::tr("AI 记忆清空失败")}
+    };
+}
 bool ScheduleService::setDemoModeEnabled(bool enabled)
 {
     const bool ok = m_settings.setValue(QStringLiteral("demoModeEnabled"), enabled ? QStringLiteral("true") : QStringLiteral("false"));
@@ -2903,7 +3611,8 @@ QVariantMap ScheduleService::taskToMap(const Task& task) const
         {"scheduleStatus", static_cast<int>(task.scheduleStatus)},
         {"status", static_cast<int>(task.status)},
         {"categoryColor", colorForPriority(task.priority, task.categoryColor)},
-        {"completedAt", task.completedAt.isValid() ? deadlineText(task.completedAt) : QString()}
+        {"completedAt", task.completedAt.isValid() ? deadlineText(task.completedAt) : QString()},
+        {"dynamicPriority", m_priorityEvaluator.details(task, QDateTime::currentDateTime())}
     };
 }
 

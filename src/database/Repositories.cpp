@@ -1411,3 +1411,78 @@ bool TimeBlockRepository::deleteBlock(int blockId) const
     query.addBindValue(blockId);
     return query.exec() && query.numRowsAffected() == 1;
 }
+
+MemoryRepository::MemoryRepository(QSqlDatabase db)
+    : m_db(std::move(db))
+{
+}
+
+bool MemoryRepository::upsert(const QString& kind, const QString& key, const QString& content, double weight) const
+{
+    const QString normalizedKind = kind.trimmed();
+    const QString normalizedKey = key.trimmed();
+    const QString normalizedContent = content.trimmed();
+    if (normalizedKind.isEmpty() || normalizedKey.isEmpty() || normalizedContent.isEmpty()) {
+        return false;
+    }
+    const QString now = toIso(QDateTime::currentDateTime());
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(R"SQL(
+        INSERT INTO ai_memories(kind, memory_key, content, weight, created_at, updated_at, last_used_at)
+        VALUES(?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(kind, memory_key) DO UPDATE SET
+            content = excluded.content,
+            weight = MIN(5.0, MAX(ai_memories.weight, excluded.weight) + 0.15),
+            updated_at = excluded.updated_at,
+            last_used_at = excluded.last_used_at
+    )SQL"));
+    query.addBindValue(normalizedKind);
+    query.addBindValue(normalizedKey);
+    query.addBindValue(normalizedContent);
+    query.addBindValue(qBound(0.1, weight, 5.0));
+    query.addBindValue(now);
+    query.addBindValue(now);
+    query.addBindValue(now);
+    return query.exec();
+}
+
+QVariantList MemoryRepository::recent(int limit) const
+{
+    QVariantList memories;
+    QSqlQuery query(m_db);
+    query.prepare(QStringLiteral(R"SQL(
+        SELECT id, kind, memory_key, content, weight, updated_at
+        FROM ai_memories
+        ORDER BY weight DESC, updated_at DESC
+        LIMIT ?
+    )SQL"));
+    query.addBindValue(qBound(1, limit, 50));
+    if (!query.exec()) {
+        return memories;
+    }
+    while (query.next()) {
+        memories.push_back(QVariantMap{
+            {QStringLiteral("id"), query.value(0).toInt()},
+            {QStringLiteral("kind"), query.value(1).toString()},
+            {QStringLiteral("key"), query.value(2).toString()},
+            {QStringLiteral("content"), query.value(3).toString()},
+            {QStringLiteral("weight"), query.value(4).toDouble()},
+            {QStringLiteral("updatedAt"), query.value(5).toString()}
+        });
+    }
+    return memories;
+}
+
+int MemoryRepository::count() const
+{
+    QSqlQuery query(m_db);
+    return query.exec(QStringLiteral("SELECT COUNT(*) FROM ai_memories")) && query.next()
+        ? query.value(0).toInt()
+        : 0;
+}
+
+bool MemoryRepository::clear() const
+{
+    QSqlQuery query(m_db);
+    return query.exec(QStringLiteral("DELETE FROM ai_memories"));
+}
