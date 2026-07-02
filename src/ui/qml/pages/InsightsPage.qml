@@ -9,18 +9,42 @@ Rectangle {
 
     property string period: "week"
     property var dashboard: ({})
+    property real chartReveal: 0
+    property int animationSerial: 0
 
     function reload() {
         dashboard = ScheduleService.insightsDashboard(period)
+        replayAnimations()
+    }
+
+    function replayAnimations() {
+        chartReveal = 0
         distributionCanvas.requestPaint()
-        barsCanvas.requestPaint()
+        animationSerial += 1
+        chartRevealAnimation.restart()
     }
 
     Component.onCompleted: reload()
 
+    onVisibleChanged: {
+        if (visible) {
+            replayAnimations()
+        }
+    }
+
     Connections {
         target: ScheduleService
         function onDataChanged() { root.reload() }
+    }
+
+    NumberAnimation {
+        id: chartRevealAnimation
+        target: root
+        property: "chartReveal"
+        from: 0
+        to: 1
+        duration: 760
+        easing.type: Easing.OutCubic
     }
 
     ScrollView {
@@ -37,9 +61,23 @@ Rectangle {
                 Layout.fillWidth: true
                 Layout.preferredHeight: 92
                 radius: 20
-                color: Theme.surfaceElevated
+                color: Theme.dark ? "#151B28" : "#FAFCFF"
                 border.width: 1
                 border.color: Theme.border
+                clip: true
+
+                Rectangle {
+                    anchors.right: parent.right
+                    anchors.top: parent.top
+                    width: parent.width * 0.38
+                    height: parent.height
+                    opacity: Theme.dark ? 0.18 : 0.42
+                    gradient: Gradient {
+                        orientation: Gradient.Horizontal
+                        GradientStop { position: 0; color: "#005271FF" }
+                        GradientStop { position: 1; color: "#665271FF" }
+                    }
+                }
 
                 RowLayout {
                     anchors.fill: parent
@@ -187,6 +225,12 @@ Rectangle {
                             id: distributionCanvas
                             Layout.preferredWidth: 210
                             Layout.preferredHeight: 210
+                            antialiasing: true
+
+                            Connections {
+                                target: root
+                                function onChartRevealChanged() { distributionCanvas.requestPaint() }
+                            }
 
                             onPaint: {
                                 var ctx = getContext("2d")
@@ -198,16 +242,44 @@ Rectangle {
                                 ]
                                 var colors = ["#5271FF", "#F59E0B", Theme.dark ? "#334155" : "#CBD5E1"]
                                 var total = Math.max(1, values[0] + values[1] + values[2])
+                                var cx = width / 2
+                                var cy = height / 2
+                                var radius = 73
+                                var lineWidth = 26
                                 var start = -Math.PI / 2
+
+                                ctx.lineWidth = lineWidth
+                                ctx.lineCap = "round"
+                                ctx.strokeStyle = Theme.dark ? "#242D40" : "#E1E8F2"
+                                ctx.beginPath()
+                                ctx.arc(cx, cy, radius, 0, Math.PI * 2)
+                                ctx.stroke()
+
                                 for (var i = 0; i < values.length; ++i) {
-                                    var angle = Math.PI * 2 * values[i] / total
+                                    var fullAngle = Math.PI * 2 * values[i] / total
+                                    var angle = fullAngle * root.chartReveal
+                                    if (angle <= 0.01) {
+                                        continue
+                                    }
                                     ctx.beginPath()
                                     ctx.strokeStyle = colors[i]
-                                    ctx.lineWidth = 25
+                                    ctx.lineWidth = lineWidth
                                     ctx.lineCap = "round"
-                                    ctx.arc(width / 2, height / 2, 73, start + 0.025, start + angle - 0.025)
+                                    ctx.shadowBlur = i === 0 ? 16 : 0
+                                    ctx.shadowColor = colors[i]
+                                    ctx.arc(cx, cy, radius, start + 0.035, start + angle - 0.035)
                                     ctx.stroke()
-                                    start += angle
+                                    start += fullAngle * root.chartReveal
+                                }
+
+                                if (root.chartReveal > 0.04 && root.chartReveal < 0.99) {
+                                    var headAngle = -Math.PI / 2 + Math.PI * 2 * root.chartReveal
+                                    ctx.shadowBlur = 22
+                                    ctx.shadowColor = "#5271FF"
+                                    ctx.fillStyle = "#FFFFFF"
+                                    ctx.beginPath()
+                                    ctx.arc(cx + Math.cos(headAngle) * radius, cy + Math.sin(headAngle) * radius, 5.5, 0, Math.PI * 2)
+                                    ctx.fill()
                                 }
                             }
 
@@ -258,36 +330,123 @@ Rectangle {
                     title: root.period === "day" ? qsTr("今日执行") : qsTr("每日学习趋势")
                     subtitle: qsTr("浅色为计划，绿色为已完成")
 
-                    Canvas {
-                        id: barsCanvas
+                    Item {
+                        id: barsChart
                         anchors.fill: parent
                         anchors.leftMargin: 24
                         anchors.rightMargin: 20
                         anchors.topMargin: 78
                         anchors.bottomMargin: 35
 
-                        onPaint: {
-                            var ctx = getContext("2d")
-                            ctx.reset()
-                            var bars = root.dashboard.dailyBars || []
-                            if (!bars.length) return
-                            var maxValue = 60
-                            for (var i = 0; i < bars.length; ++i)
-                                maxValue = Math.max(maxValue, Number(bars[i].plannedMinutes || 0))
-                            var slot = width / bars.length
-                            var barWidth = Math.min(46, slot * 0.48)
-                            ctx.font = "11px sans-serif"
-                            ctx.textAlign = "center"
-                            for (var j = 0; j < bars.length; ++j) {
-                                var x = slot * j + slot / 2
-                                var plannedHeight = (height - 28) * Number(bars[j].plannedMinutes || 0) / maxValue
-                                var doneHeight = (height - 28) * Number(bars[j].completedMinutes || 0) / maxValue
-                                ctx.fillStyle = Theme.dark ? "#334155" : "#DDE5F3"
-                                ctx.fillRect(x - barWidth / 2, height - 24 - plannedHeight, barWidth, plannedHeight)
-                                ctx.fillStyle = "#22C55E"
-                                ctx.fillRect(x - barWidth / 2, height - 24 - doneHeight, barWidth, doneHeight)
-                                ctx.fillStyle = Theme.secondaryText
-                                ctx.fillText(bars[j].dayLabel || bars[j].dateText, x, height - 6)
+                        property var bars: root.dashboard.dailyBars || []
+                        property real maxValue: {
+                            var value = 60
+                            for (var i = 0; i < bars.length; ++i) {
+                                value = Math.max(value, Number(bars[i].plannedMinutes || 0))
+                            }
+                            return value
+                        }
+
+                        Repeater {
+                            model: 3
+                            delegate: Rectangle {
+                                anchors.left: parent.left
+                                anchors.right: parent.right
+                                y: parent.height * (index + 1) / 4
+                                height: 1
+                                color: Theme.dark ? "#223044" : "#E7EDF6"
+                                opacity: 0.8
+                            }
+                        }
+
+                        RowLayout {
+                            anchors.fill: parent
+                            spacing: 8
+
+                            Repeater {
+                                model: barsChart.bars
+                                delegate: ColumnLayout {
+                                    id: barColumn
+                                    property real reveal: 0
+
+                                    Layout.fillWidth: true
+                                    Layout.fillHeight: true
+                                    spacing: 8
+
+                                    Component.onCompleted: barDelay.restart()
+
+                                    Connections {
+                                        target: root
+                                        function onAnimationSerialChanged() {
+                                            barColumn.reveal = 0
+                                            barDelay.restart()
+                                        }
+                                    }
+
+                                    Timer {
+                                        id: barDelay
+                                        interval: index * 55
+                                        repeat: false
+                                        onTriggered: barRevealAnimation.restart()
+                                    }
+
+                                    NumberAnimation {
+                                        id: barRevealAnimation
+                                        target: barColumn
+                                        property: "reveal"
+                                        from: 0
+                                        to: 1
+                                        duration: 620
+                                        easing.type: Easing.OutCubic
+                                    }
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                        Layout.fillHeight: true
+
+                                        Rectangle {
+                                            id: plannedBar
+                                            width: Math.min(34, parent.width * 0.34)
+                                            height: Math.max(0, (parent.height - 2) * Number(modelData.plannedMinutes || 0) / barsChart.maxValue) * barColumn.reveal
+                                            radius: width / 2
+                                            anchors.horizontalCenter: parent.horizontalCenter
+                                            anchors.bottom: parent.bottom
+                                            color: Theme.dark ? "#2D3A50" : "#E0E8F5"
+                                            opacity: 0.95
+                                            scale: 0.98
+                                            transformOrigin: Item.Bottom
+
+                                            Rectangle {
+                                                anchors.left: parent.left
+                                                anchors.right: parent.right
+                                                anchors.top: parent.top
+                                                anchors.leftMargin: 4
+                                                anchors.rightMargin: 4
+                                                anchors.topMargin: 5
+                                                height: Math.min(18, parent.height * 0.28)
+                                                radius: width / 2
+                                                color: Theme.dark ? "#35FFFFFF" : "#AAFFFFFF"
+                                            }
+
+                                            Rectangle {
+                                                width: Math.max(10, parent.width - 10)
+                                                height: Math.max(0, parent.height * Number(modelData.completedMinutes || 0) / Math.max(1, Number(modelData.plannedMinutes || 0)))
+                                                radius: width / 2
+                                                anchors.horizontalCenter: parent.horizontalCenter
+                                                anchors.bottom: parent.bottom
+                                                color: "#22C55E"
+                                                visible: height > 0
+                                            }
+                                        }
+                                    }
+
+                                    Text {
+                                        Layout.alignment: Qt.AlignHCenter
+                                        text: modelData.dayLabel || modelData.dateText
+                                        color: Theme.secondaryText
+                                        font.pixelSize: 11
+                                    }
+                                }
                             }
                         }
                     }
@@ -453,13 +612,39 @@ Rectangle {
         Layout.fillWidth: true
         Layout.preferredHeight: 116
         radius: 18
-        color: Theme.surfaceElevated
+        color: Theme.dark ? "#161D2A" : "#FFFFFF"
         border.width: 1
         border.color: Theme.border
+        clip: true
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.top: parent.top
+            anchors.bottom: parent.bottom
+            width: 5
+            color: accent
+            opacity: 0.95
+        }
+
+        Rectangle {
+            anchors.right: parent.right
+            anchors.top: parent.top
+            width: parent.width * 0.46
+            height: parent.height
+            opacity: Theme.dark ? 0.08 : 0.16
+            gradient: Gradient {
+                orientation: Gradient.Horizontal
+                GradientStop { position: 0; color: "#00FFFFFF" }
+                GradientStop { position: 1; color: accent }
+            }
+        }
 
         ColumnLayout {
             anchors.fill: parent
-            anchors.margins: 16
+            anchors.leftMargin: 18
+            anchors.rightMargin: 16
+            anchors.topMargin: 16
+            anchors.bottomMargin: 16
             spacing: 5
             Text { text: label; color: Theme.secondaryText; font.pixelSize: 12 }
             Text { text: value; color: accent; font.pixelSize: 27; font.weight: Font.Bold }
@@ -473,9 +658,22 @@ Rectangle {
         property string subtitle: ""
 
         radius: 20
-        color: Theme.surfaceElevated
+        color: Theme.dark ? "#151B24" : "#FFFFFF"
         border.width: 1
         border.color: Theme.border
+        clip: true
+
+        Rectangle {
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            height: 74
+            opacity: Theme.dark ? 0.18 : 0.5
+            gradient: Gradient {
+                GradientStop { position: 0; color: Theme.dark ? "#1D2738" : "#F6F9FF" }
+                GradientStop { position: 1; color: "transparent" }
+            }
+        }
 
         Column {
             anchors.left: parent.left
